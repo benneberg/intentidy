@@ -20,10 +20,22 @@ export const SAMPLE_CARDS: PortableCard[] = [
       architecture: "Event-driven microservices with a semantic graph layer.",
       capabilities: ["Lineage tracking", "Intelligent mapping", "Agentic orchestration"],
       techStack: ["React", "Express", "Gemini API", "PostgreSQL"],
+      subsystems: [
+        { name: "Graph Engine", purpose: "Compute semantic deltas", status: "healthy" },
+        { name: "Orchestrator", purpose: "Manages agent lifecycle", status: "healthy" },
+        { name: "Telemetry Sink", purpose: "Aggregates runtime events", status: "degraded" }
+      ]
     },
     runtime: {
       buildStatus: "success",
       deploymentState: "production",
+      testResults: {
+        passed: 142,
+        failed: 0,
+        total: 142,
+        coverage: 88,
+        lastRun: "2026-05-09T11:45:00Z"
+      },
       lastCommit: {
         hash: "7d3a2f1",
         message: "feat: implement semantic snapshot differ",
@@ -39,11 +51,33 @@ export const SAMPLE_CARDS: PortableCard[] = [
           ]
         }
       ],
+      errorLogs: [
+        { timestamp: "2026-05-09T10:30:00Z", service: "Build Engine", message: "TypeScript compilation failed: src/engine/diff.ts(42,12): error TS2304: Cannot find name 'Node'.", level: "error" },
+        { timestamp: "2026-05-09T09:15:00Z", service: "Deployment", message: "Health check timed out for container 'cl-graph-engine-v2'. Retrying...", level: "warning" },
+        { timestamp: "2026-05-08T22:45:00Z", service: "Orchestrator", message: "Gemini API rate limit exceeded. Falling back to cached semantic snapshots.", level: "warning" },
+        { timestamp: "2026-05-08T14:12:00Z", service: "Telemetry", message: "Database connection pools exhausted. Increasing max connections to 50.", level: "error" }
+      ],
       telemetry: {
         latency: 142,
+        latencyHistory: [
+          { time: '00:00', value: 120 },
+          { time: '04:00', value: 150 },
+          { time: '08:00', value: 110 },
+          { time: '12:00', value: 160 },
+          { time: '16:00', value: 142 },
+          { time: '20:00', value: 130 },
+          { time: '23:59', value: 135 },
+        ],
         errors: 0,
         coverage: 88,
       }
+    },
+    continuity: {
+      lastActiveFile: "src/engine/diff.ts",
+      tabs: ["src/engine/diff.ts", "src/App.tsx", "package.json"],
+      cursorPosition: { line: 42, ch: 12 },
+      activeDebugSession: true,
+      localEnvironmentState: "warm"
     },
     intent: {
       goals: ["Achieve full semantic coverage", "Implement cross-card agent communication"],
@@ -85,6 +119,15 @@ export const SAMPLE_CARDS: PortableCard[] = [
       },
       telemetry: {
         latency: 310,
+        latencyHistory: [
+          { time: '00:00', value: 280 },
+          { time: '04:00', value: 320 },
+          { time: '08:00', value: 290 },
+          { time: '12:00', value: 350 },
+          { time: '16:00', value: 310 },
+          { time: '20:00', value: 300 },
+          { time: '23:59', value: 315 },
+        ],
         errors: 3,
         coverage: 91,
       }
@@ -145,6 +188,15 @@ export const SAMPLE_CARDS: PortableCard[] = [
       ],
       telemetry: {
         latency: 42,
+        latencyHistory: [
+          { time: '00:00', value: 38 },
+          { time: '04:00', value: 45 },
+          { time: '08:00', value: 40 },
+          { time: '12:00', value: 50 },
+          { time: '16:00', value: 42 },
+          { time: '20:00', value: 39 },
+          { time: '23:59', value: 41 },
+        ],
         errors: 0,
         coverage: 94,
       }

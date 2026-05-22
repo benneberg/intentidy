@@ -14,25 +14,91 @@ import {
   Fingerprint, 
   Command, 
   Ghost,
-  Loader2
+  Loader2,
+  Sparkles,
+  Filter,
+  X
 } from 'lucide-react';
 import { PortableCard } from './types';
 import { SAMPLE_CARDS } from './constants';
 import { CardView } from './components/CardView';
 import { summarizeProject, generateSuggestions } from './services/gemini';
+import { InfoModal } from './components/InfoModal';
+import { FilterModal } from './components/FilterModal';
 
 export default function App() {
-  const [cards, setCards] = useState<PortableCard[]>(SAMPLE_CARDS);
+  const [cards, setCards] = useState<PortableCard[]>(() => {
+    const saved = localStorage.getItem('intentidy_cards');
+    return saved ? JSON.parse(saved) : SAMPLE_CARDS;
+  });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddingCard, setIsAddingCard] = useState(false);
   const [newCardInput, setNewCardInput] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Modals state
+  const [activeInfoTab, setActiveInfoTab] = useState<'about' | 'guide' | 'faq' | null>(null);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [sortOption, setSortOption] = useState<'sync' | 'name' | 'status'>('sync');
 
-  const filteredCards = cards.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.tags.some(t => t.toLowerCase().includes(searchQuery.toLowerCase()))
-  );
+  // Persist cards to localStorage (simulating cloud sync)
+  useEffect(() => {
+    localStorage.setItem('intentidy_cards', JSON.stringify(cards));
+  }, [cards]);
+
+  // Near real-time telemetry jitter simulation
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCards(prev => prev.map(card => {
+        if (!card.runtime.telemetry) return card;
+        return {
+          ...card,
+          runtime: {
+            ...card.runtime,
+            telemetry: {
+              ...card.runtime.telemetry,
+              latency: Math.max(20, card.runtime.telemetry.latency! + (Math.random() * 10 - 5)),
+              errors: Math.random() > 0.98 ? card.runtime.telemetry.errors! + 1 : card.runtime.telemetry.errors
+            }
+          }
+        };
+      }));
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleUpdateCard = (updatedCard: PortableCard) => {
+    setCards(prev => prev.map(c => c.id === updatedCard.id ? updatedCard : c));
+  };
+
+  const handleToggleTag = (tag: string) => {
+    setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag]);
+  };
+
+  const availableTags = Array.from(new Set(cards.flatMap(c => c.tags))) as string[];
+
+  const filteredCards = cards.filter(c => {
+    const matchesSearch = c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.summary.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesTags = selectedTags.length === 0 || selectedTags.every(t => c.tags.includes(t));
+    return matchesSearch && matchesTags;
+  });
+
+  const sortedCards = [...filteredCards].sort((a, b) => {
+    if (sortOption === 'sync') {
+      return new Date(b.lastSync).getTime() - new Date(a.lastSync).getTime();
+    }
+    if (sortOption === 'name') {
+      return a.name.localeCompare(b.name);
+    }
+    if (sortOption === 'status') {
+      const order = { success: 0, pending: 1, failure: 2 };
+      return order[a.runtime.buildStatus] - order[b.runtime.buildStatus];
+    }
+    return 0;
+  });
 
   const handleAddCard = async () => {
     if (!newCardInput.trim()) return;
@@ -103,6 +169,16 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-6">
+             <button 
+              onClick={async () => {
+                const context = cards.map(c => `${c.name}: ${c.summary.description}`).join('; ');
+                const summary = await summarizeProject(context);
+                alert(`Inventory Intelligence Summary: ${summary}`);
+              }}
+              className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-neutral-100 rounded-full text-xs font-bold text-neutral-800 hover:bg-neutral-200 transition-colors"
+             >
+                <Sparkles size={14} /> pcard summarize
+             </button>
              <div className="hidden md:flex items-center gap-2 px-3 py-1.5 bg-neutral-100 rounded-full text-xs font-medium text-neutral-500">
                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                12 Agents Active
@@ -132,20 +208,63 @@ export default function App() {
             Manage your <span className="font-medium italic">portable software</span> systems as semi-autonomous entities.
           </h2>
           
-          <div className="pt-8 flex flex-col md:flex-row gap-4 items-start md:items-center">
-             <div className="relative w-full md:w-96 group">
+          <div className="pt-8 flex flex-col md:flex-row gap-4 items-stretch md:items-center">
+             <div className="relative flex-1 md:max-w-md group">
                 <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-neutral-300 group-focus-within:text-neutral-900 transition-colors" size={18} />
                 <input 
                   type="text" 
-                  placeholder="Filter semantic cards..." 
-                  className="w-full pl-12 pr-6 py-3 bg-white border border-neutral-200 rounded-2xl focus:outline-none focus:ring-1 focus:ring-neutral-900 focus:border-neutral-900 transition-all shadow-sm"
+                  placeholder="Universal system search..." 
+                  className="w-full pl-12 pr-12 py-3.5 bg-white border border-neutral-200 rounded-2xl focus:outline-none focus:ring-1 focus:ring-neutral-900 focus:border-neutral-900 transition-all shadow-sm"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
+                <button 
+                  onClick={() => setIsFilterOpen(true)}
+                  className={`absolute right-4 top-1/2 -translate-y-1/2 p-1.5 rounded-lg transition-colors ${
+                    selectedTags.length > 0 ? 'bg-neutral-900 text-white' : 'text-neutral-400 hover:text-neutral-900 hover:bg-neutral-50'
+                  }`}
+                >
+                  <Filter size={16} />
+                  {selectedTags.length > 0 && (
+                    <span className="absolute -top-1 -right-1 w-4 h-4 bg-emerald-500 border-2 border-white rounded-full flex items-center justify-center text-[10px] text-white">
+                      {selectedTags.length}
+                    </span>
+                  )}
+                </button>
              </div>
-             <span className="hidden md:block text-neutral-300">—</span>
+
+             <div className="flex items-center gap-3 bg-white border border-neutral-200 rounded-2xl px-4 py-3.5 shadow-sm">
+                <span className="text-[10px] font-black uppercase tracking-widest text-neutral-300">Sort</span>
+                <select 
+                  className="bg-transparent text-xs font-bold text-neutral-600 focus:outline-none cursor-pointer appearance-none pr-4"
+                  value={sortOption}
+                  onChange={(e) => setSortOption(e.target.value as any)}
+                >
+                  <option value="sync">Recent Sync</option>
+                  <option value="name">Name (A-Z)</option>
+                  <option value="status">Build Status</option>
+                </select>
+             </div>
+             
+             {selectedTags.length > 0 && (
+               <div className="flex flex-wrap gap-2">
+                 {selectedTags.map(tag => (
+                   <span key={tag} className="flex items-center gap-1 px-3 py-1.5 bg-neutral-900 text-white text-[11px] font-bold rounded-full uppercase tracking-widest animate-in zoom-in-50 duration-300">
+                     {tag}
+                     <button onClick={() => handleToggleTag(tag)} className="hover:text-neutral-400">
+                       <X size={12} />
+                     </button>
+                   </span>
+                 ))}
+                 <button onClick={() => setSelectedTags([])} className="text-[10px] font-bold uppercase tracking-widest text-neutral-400 hover:text-neutral-900 px-2">
+                   Clear
+                 </button>
+               </div>
+             )}
+
+             <span className="hidden md:block text-neutral-200">—</span>
              <p className="text-sm text-neutral-500 font-medium font-mono lowercase">
-               {filteredCards.length} Cards Loaded
+               {filteredCards.length} Result{filteredCards.length !== 1 ? 's' : ''}
              </p>
           </div>
         </motion.div>
@@ -155,19 +274,21 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-6 pb-40">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <AnimatePresence mode="popLayout">
-            {filteredCards.map((card) => (
+            {sortedCards.map((card) => (
               <CardView 
                 key={card.id} 
                 card={card} 
                 isExpanded={expandedId === card.id}
                 onToggle={() => setExpandedId(expandedId === card.id ? null : card.id)}
+                onUpdateCard={handleUpdateCard}
+                onDeleteCard={(id) => setCards(prev => prev.filter(c => c.id !== id))}
               />
             ))}
           </AnimatePresence>
         </div>
 
         {/* Empty State */}
-        {filteredCards.length === 0 && (
+        {sortedCards.length === 0 && (
           <div className="flex flex-col items-center justify-center py-20 grayscale opacity-40">
              <Ghost size={64} className="mb-4" />
              <p className="text-lg font-light tracking-tight italic">No systems matched your search query.</p>
@@ -175,51 +296,79 @@ export default function App() {
         )}
       </main>
 
-      {/* Add Card Modal */}
+      {/* Modals */}
+      <FilterModal 
+        isOpen={isFilterOpen}
+        onClose={() => setIsFilterOpen(false)}
+        availableTags={availableTags}
+        selectedTags={selectedTags}
+        onToggleTag={handleToggleTag}
+        onClear={() => setSelectedTags([])}
+      />
+
+      <InfoModal 
+        isOpen={activeInfoTab !== null}
+        onClose={() => setActiveInfoTab(null)}
+        initialTab={activeInfoTab || 'about'}
+      />
+
+      {/* Add Card Modal optimized for mobile */}
       <AnimatePresence>
         {isAddingCard && (
           <motion.div 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-neutral-900/40 backdrop-blur-sm"
+            className="fixed inset-0 z-[100] flex items-end md:items-center justify-center p-0 md:p-6 bg-neutral-900/60 backdrop-blur-sm"
+            onClick={() => setIsAddingCard(false)}
           >
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white rounded-3xl p-8 md:p-12 w-full max-w-2xl shadow-2xl space-y-8"
+              initial={{ y: "100%", opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: "100%", opacity: 0 }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="bg-white rounded-t-[2.5rem] md:rounded-3xl p-8 md:p-12 w-full max-w-2xl shadow-2xl space-y-8 max-h-[95vh] overflow-y-auto"
               onClick={e => e.stopPropagation()}
             >
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
-                  <h3 className="text-3xl font-light tracking-tight underline decoration-neutral-200 underline-offset-8">New Semantic Card</h3>
-                  <button onClick={() => setIsAddingCard(false)} className="text-neutral-400 hover:text-neutral-900">
-                    Close
+                  <h3 className="text-3xl font-light tracking-tight">Project New Intent</h3>
+                  <button onClick={() => setIsAddingCard(false)} className="p-2 hover:bg-neutral-100 rounded-full transition-colors">
+                    <X size={24} />
                   </button>
                 </div>
-                <p className="text-neutral-500 font-light">
-                  Paste a GitHub URL or describe a project to project it onto a PortableCard.
+                <p className="text-neutral-500 font-light text-sm md:text-base leading-relaxed">
+                  Enter a GitHub URL or describe your architecture. We'll projection it onto a semantic card.
                 </p>
               </div>
 
               <div className="space-y-6">
-                 <textarea 
-                  value={newCardInput}
-                  onChange={(e) => setNewCardInput(e.target.value)}
-                  placeholder="https://github.com/org/repo or 'A distributed database built for low-latency gaming'"
-                  className="w-full h-40 p-6 bg-neutral-50 border border-neutral-100 rounded-3xl text-lg font-light tracking-tight focus:outline-none focus:ring-1 focus:ring-neutral-900 resize-none transition-all"
-                 />
+                 <div className="relative">
+                    <textarea 
+                      value={newCardInput}
+                      onChange={(e) => setNewCardInput(e.target.value)}
+                      placeholder="e.g. https://github.com/my/repo or 'A distributed KV store with multi-region replication'"
+                      className="w-full h-40 md:h-48 p-6 bg-neutral-50 border border-neutral-100 rounded-3xl text-lg font-light tracking-tight focus:outline-none focus:ring-1 focus:ring-neutral-900 resize-none transition-all placeholder:text-neutral-300"
+                    />
+                    {newCardInput && (
+                      <button 
+                        onClick={() => setNewCardInput('')}
+                        className="absolute right-4 top-4 text-neutral-300 hover:text-neutral-900"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
+                 </div>
                  
                  <button 
                   disabled={isGenerating || !newCardInput.trim()}
                   onClick={handleAddCard}
-                  className="w-full py-4 bg-neutral-900 text-white rounded-2xl font-medium tracking-tight hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-colors"
+                  className="w-full py-5 bg-neutral-900 text-white rounded-[1.5rem] font-bold tracking-widest uppercase text-xs shadow-xl shadow-neutral-200 hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3 transition-all"
                  >
                     {isGenerating ? (
                       <>
                         <Loader2 className="animate-spin" size={20} />
-                        Generating Semantic Projection...
+                        Projection in Progress...
                       </>
                     ) : (
                       <>
@@ -230,10 +379,10 @@ export default function App() {
                  </button>
               </div>
 
-              <div className="flex items-start gap-4 p-4 rounded-xl bg-blue-50/50">
-                 <LayoutGrid className="text-blue-500 shrink-0 mt-1" size={18} />
-                 <p className="text-xs text-blue-700/80 leading-relaxed italic">
-                   Note: New cards are initialized as 'experimental' with autonomous agentic analysis enabled by default.
+              <div className="flex items-start gap-4 p-5 rounded-2xl bg-neutral-50 border border-neutral-100">
+                 <LayoutGrid className="text-neutral-400 shrink-0" size={20} />
+                 <p className="text-[11px] text-neutral-500 leading-relaxed italic">
+                   Note: New cards default to 'experimental' with agentic analysis active. Telemetry will begin mapping after first commit sync.
                  </p>
               </div>
             </motion.div>
@@ -242,13 +391,20 @@ export default function App() {
       </AnimatePresence>
 
       {/* Footer */}
-      <footer className="border-t border-neutral-100 py-12 px-6">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-          <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-300">© 2026 intenTidy // Decker Software Orchestration Intelligence</p>
-          <div className="flex gap-8 text-[11px] font-bold uppercase tracking-widest text-neutral-400">
-             <a href="#" className="hover:text-neutral-900">Documentation</a>
-             <a href="#" className="hover:text-neutral-900">Privacy</a>
-             <a href="#" className="hover:text-neutral-900">API</a>
+      <footer className="border-t border-neutral-100 py-16 px-6 bg-[#FDFDFB]">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-12">
+          <div className="space-y-4 text-center md:text-left">
+            <div className="flex items-center justify-center md:justify-start gap-3">
+              <Command size={20} className="text-neutral-900" />
+              <h4 className="font-bold tracking-tight lowercase">intenTidy</h4>
+            </div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.3em] text-neutral-300">© 2026 // Orchestration Intelligence</p>
+          </div>
+          
+          <div className="flex flex-wrap justify-center gap-8 text-[11px] font-black uppercase tracking-[0.2em] text-neutral-400">
+             <button onClick={() => setActiveInfoTab('guide')} className="hover:text-neutral-900 transition-colors">Guide</button>
+             <button onClick={() => setActiveInfoTab('faq')} className="hover:text-neutral-900 transition-colors">FAQ</button>
+             <button onClick={() => setActiveInfoTab('about')} className="hover:text-neutral-900 transition-colors">About</button>
           </div>
         </div>
       </footer>

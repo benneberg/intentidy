@@ -59,3 +59,55 @@ export async function summarizeProject(context: string): Promise<string> {
     return "Error generating summary.";
   }
 }
+
+export async function generateArchitectureOverview(card: PortableCard): Promise<Partial<PortableCard['summary']>> {
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Perform a deep architectural analysis of this system:
+      ${JSON.stringify(card, null, 2)}
+      
+      Return a structured overview including:
+      1. Formal architecture pattern
+      2. 3-5 core capabilities
+      3. Technology stack
+      4. Key subsystems with their purpose and estimated health.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            architecture: { type: Type.STRING },
+            capabilities: { 
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            techStack: { 
+              type: Type.ARRAY,
+              items: { type: Type.STRING }
+            },
+            subsystems: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  purpose: { type: Type.STRING },
+                  status: { type: Type.STRING, enum: ["healthy", "degraded", "critical"] }
+                },
+                required: ["name", "purpose", "status"]
+              }
+            }
+          },
+          required: ["architecture", "capabilities", "techStack", "subsystems"]
+        }
+      }
+    });
+
+    const text = response.text || "{}";
+    return JSON.parse(text);
+  } catch (error) {
+    console.error("Error generating architecture overview:", error);
+    return {};
+  }
+}
