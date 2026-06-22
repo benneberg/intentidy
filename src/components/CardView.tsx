@@ -76,6 +76,8 @@ export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCar
   const [isExporting, setIsExporting] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSyncingRepo, setIsSyncingRepo] = useState(false);
+  const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
+  const [isScaffolding, setIsScaffolding] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('synced');
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<any>(card);
@@ -240,6 +242,58 @@ export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCar
     setIsEditing(false);
   };
 
+  const handleQuickAction = async (action: string) => {
+    setIsQuickActionsOpen(false);
+    
+    switch (action) {
+      case 'diffs':
+        setActiveTab('logs');
+        break;
+      case 'ai':
+        if (!onUpdateCard) return;
+        setIsAnalyzing(true);
+        try {
+          const result = await generateArchitectureOverview(card);
+          if (result) {
+            onUpdateCard({
+              ...card,
+              summary: {
+                ...card.summary,
+                ...result
+              }
+            });
+          }
+        } finally {
+          setIsAnalyzing(false);
+        }
+        break;
+      case 'scaffold':
+        setIsScaffolding(true);
+        setTimeout(() => setIsScaffolding(false), 2000);
+        break;
+      case 'task':
+        if (onUpdateCard) {
+          const newTask = { id: Math.random().toString(36).substr(2, 9), title: 'New System Task', status: 'todo' as const };
+          onUpdateCard({
+            ...card,
+            intent: {
+              ...card.intent,
+              tasks: [...card.intent.tasks, newTask]
+            }
+          });
+        }
+        break;
+      case 'deploy':
+        if (onUpdateCard) {
+          onUpdateCard({ ...card, runtime: { ...card.runtime, buildStatus: 'pending' } });
+          setTimeout(() => {
+            onUpdateCard({ ...card, runtime: { ...card.runtime, buildStatus: 'success' } });
+          }, 3000);
+        }
+        break;
+    }
+  };
+
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onDeleteCard && window.confirm("Are you sure you want to delete this card?")) {
@@ -330,23 +384,88 @@ export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCar
                 )}
                </AnimatePresence>
               <div className="space-y-6 flex-1">
-                <div className="flex items-center gap-4">
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); onToggle(); }}
-                    className="p-3 -ml-3 rounded-2xl hover:bg-neutral-800 text-neutral-400 transition-colors"
-                  >
-                    <ChevronRight className="rotate-180" size={24} />
-                  </button>
-                  {isEditing ? (
-                    <input 
-                      type="text" 
-                      className="bg-neutral-800 text-white text-4xl md:text-5xl font-light tracking-tight px-4 py-2 rounded-2xl w-full border border-neutral-700 focus:outline-none"
-                      value={editForm.name}
-                      onChange={e => setEditForm({...editForm, name: e.target.value})}
-                    />
-                  ) : (
-                    <h2 className="text-4xl md:text-6xl font-light text-white tracking-tighter">{card.name}</h2>
-                  )}
+                <div className="flex items-center justify-between group/header">
+                  <div className="flex items-center gap-4">
+                    <button 
+                      onClick={(e) => { e.stopPropagation(); onToggle(); }}
+                      className="p-3 -ml-3 rounded-2xl hover:bg-neutral-800 text-neutral-400 transition-colors"
+                    >
+                      <ChevronRight className="rotate-180" size={24} />
+                    </button>
+                    {isEditing ? (
+                      <input 
+                        type="text" 
+                        className="bg-neutral-800 text-white text-4xl md:text-5xl font-light tracking-tight px-4 py-2 rounded-2xl w-full border border-neutral-700 focus:outline-none"
+                        value={editForm.name}
+                        onChange={e => setEditForm({...editForm, name: e.target.value})}
+                      />
+                    ) : (
+                      <h2 className="text-4xl md:text-6xl font-light text-white tracking-tighter">{card.name}</h2>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <motion.button
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                      onClick={(e) => { e.stopPropagation(); setIsQuickActionsOpen(!isQuickActionsOpen); }}
+                      className={`flex items-center gap-2 px-6 py-3 rounded-2xl font-bold uppercase tracking-widest text-[10px] transition-all border ${
+                        isQuickActionsOpen 
+                        ? "bg-white text-black border-white shadow-[0_0_30px_rgba(255,255,255,0.3)]" 
+                        : "bg-neutral-900 text-neutral-400 border-neutral-800 hover:border-neutral-700 hover:text-white"
+                      }`}
+                    >
+                      <Zap size={14} className={isQuickActionsOpen ? "fill-current" : ""} />
+                      Quick Actions
+                    </motion.button>
+
+                    <AnimatePresence>
+                      {isQuickActionsOpen && (
+                        <>
+                          <motion.div 
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[200]"
+                            onClick={() => setIsQuickActionsOpen(false)}
+                          />
+                          <motion.div
+                            initial={{ opacity: 0, scale: 0.9, y: 10 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.9, y: 10 }}
+                            className="absolute right-0 mt-4 w-72 bg-neutral-900 border border-neutral-800 rounded-3xl shadow-2xl z-[201] overflow-hidden p-2"
+                          >
+                            <div className="p-4 border-b border-neutral-800/50 mb-2">
+                               <p className="text-[10px] font-black uppercase tracking-widest text-neutral-500">System Intent Menu</p>
+                            </div>
+                            
+                            {[
+                              { id: 'diffs', label: 'Review Diffs', icon: GitCompare, color: 'text-blue-400' },
+                              { id: 'ai', label: 'Analyze Architecture', icon: Sparkles, color: 'text-purple-400', loading: isAnalyzing },
+                              { id: 'scaffold', label: 'Generate Scaffold', icon: Layers, color: 'text-emerald-400', loading: isScaffolding },
+                              { id: 'task', label: 'Create Intent Task', icon: Target, color: 'text-rose-400' },
+                              { id: 'deploy', label: 'Trigger Deployment', icon: PlayCircle, color: 'text-amber-400' },
+                              { id: 'subsystem', label: 'Open Subsystem', icon: Cpu, color: 'text-neutral-400' },
+                            ].map((action) => (
+                              <button
+                                key={action.id}
+                                onClick={() => handleQuickAction(action.id)}
+                                className="w-full flex items-center justify-between p-4 rounded-2xl hover:bg-neutral-800 transition-colors text-left group"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className={`p-2 rounded-xl bg-neutral-950 border border-neutral-800 ${action.color} group-hover:scale-110 transition-transform`}>
+                                    {action.loading ? <Loader2 size={16} className="animate-spin" /> : <action.icon size={16} />}
+                                  </div>
+                                  <span className="text-sm font-medium text-neutral-300">{action.label}</span>
+                                </div>
+                                <ChevronRight size={14} className="text-neutral-600 opacity-0 group-hover:opacity-100 -translate-x-2 group-hover:translate-x-0 transition-all" />
+                              </button>
+                            ))}
+                          </motion.div>
+                        </>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </div>
                 
                 {isEditing ? (
