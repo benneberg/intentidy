@@ -46,5 +46,7 @@
 Create a 'feature card' that acts as a semi-autonomous agent. This card should include memory of past events, basic telemetry, and the ability to suggest actionable improvements or fixes for the feature it represents. Start with a simple 'Authentication Card' that monitors login attempts and suggests retry throttling.
 
 Implement a feature that synchronizes project state, including open files, cursor position, and recent changes, between desktop and mobile devices. This will enable seamless project continuity across different platforms.
+Integrate a mini sparkline chart using 'recharts' into the project card view to visualize the 'latency' telemetry data over time. Integrate an AI assistant to generate an architecture overview for the PortableCard. The overview should summarize the project's main subsystems, technology stack, and overall capabilities based on the connected repository's structure and code.
 
+Implement a synchronization feature for PortableCards. The card should be able to connect to a specified Git repository, track recent commits, and allow users to initiate a sync to pull the latest changes to their local environment.
 Develop an AI-powered summarization feature. Given a project's codebase or a specific subsystem, the AI should generate a concise overview of its purpose, architecture, and key functionalities. This summary should be lightweight and easily digestible on a mobile interface.
