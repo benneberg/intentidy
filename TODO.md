@@ -41,3 +41,10 @@
 - [ ] **[src/components/MultiView.tsx]** Create a bird's eye view for cross-card dependency mapping.  
   Priority: P3 | Impact: Medium | Effort: L | Evidence: goal of "orchestration layer" | Recommendation: use d3-force.  
   Confidence: Medium.
+
+## Notes:
+Create a 'feature card' that acts as a semi-autonomous agent. This card should include memory of past events, basic telemetry, and the ability to suggest actionable improvements or fixes for the feature it represents. Start with a simple 'Authentication Card' that monitors login attempts and suggests retry throttling.
+
+Implement a feature that synchronizes project state, including open files, cursor position, and recent changes, between desktop and mobile devices. This will enable seamless project continuity across different platforms.
+
+Develop an AI-powered summarization feature. Given a project's codebase or a specific subsystem, the AI should generate a concise overview of its purpose, architecture, and key functionalities. This summary should be lightweight and easily digestible on a mobile interface.
