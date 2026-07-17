@@ -81,6 +81,7 @@ export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCar
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'offline'>('synced');
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<any>(card);
+  const [aiError, setAiError] = useState<string | null>(null);
   
   // Tabs & Webhooks
   const [activeTab, setActiveTab] = useState<'overview' | 'logs'>('overview');
@@ -172,17 +173,23 @@ export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCar
     e.stopPropagation();
     if (!onUpdateCard) return;
     setIsAnalyzing(true);
+    setAiError(null);
     try {
       const overview = await generateArchitectureOverview(card);
-      onUpdateCard({
-        ...card,
-        summary: {
-          ...card.summary,
-          ...overview
-        }
-      });
-    } catch (err) {
+      if (overview && Object.keys(overview).length > 0) {
+        onUpdateCard({
+          ...card,
+          summary: {
+            ...card.summary,
+            ...overview
+          }
+        });
+      } else {
+        setAiError("AI re-analysis returned an empty result. Please check your backend connections.");
+      }
+    } catch (err: any) {
       console.error("Reanalysis failed", err);
+      setAiError("Failed to perform AI analysis: " + (err.message || "Unknown error"));
     } finally {
       setIsAnalyzing(false);
     }
@@ -252,9 +259,10 @@ export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCar
       case 'ai':
         if (!onUpdateCard) return;
         setIsAnalyzing(true);
+        setAiError(null);
         try {
           const result = await generateArchitectureOverview(card);
-          if (result) {
+          if (result && Object.keys(result).length > 0) {
             onUpdateCard({
               ...card,
               summary: {
@@ -262,7 +270,12 @@ export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCar
                 ...result
               }
             });
+          } else {
+            setAiError("AI analysis returned an empty result.");
           }
+        } catch (err: any) {
+          console.error("AI Analysis failed", err);
+          setAiError("Failed to perform AI analysis: " + (err.message || "Unknown error"));
         } finally {
           setIsAnalyzing(false);
         }
@@ -622,6 +635,21 @@ export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCar
 
             {activeTab === 'overview' && (
               <div className="space-y-12">
+                {aiError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="p-4 rounded-2xl bg-rose-950/40 border border-rose-900/30 text-rose-400 text-sm flex justify-between items-center gap-4 animate-in fade-in"
+                  >
+                    <span>{aiError}</span>
+                    <button 
+                      onClick={() => setAiError(null)} 
+                      className="text-xs font-bold uppercase tracking-widest text-rose-400 hover:text-white"
+                    >
+                      Dismiss
+                    </button>
+                  </motion.div>
+                )}
                 {/* Continuity Layer */}
                 {card.continuity && (
               <motion.section 

@@ -27,10 +27,8 @@ import { InfoModal } from './components/InfoModal';
 import { FilterModal } from './components/FilterModal';
 
 export default function App() {
-  const [cards, setCards] = useState<PortableCard[]>(() => {
-    const saved = localStorage.getItem('intentidy_cards');
-    return saved ? JSON.parse(saved) : SAMPLE_CARDS;
-  });
+  const [cards, setCards] = useState<PortableCard[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isAddingCard, setIsAddingCard] = useState(false);
@@ -42,13 +40,30 @@ export default function App() {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sortOption, setSortOption] = useState<'sync' | 'name' | 'status'>('sync');
+  const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
 
-  // Persist cards to localStorage (simulating cloud sync)
+  // Load cards from server on mount
   useEffect(() => {
-    localStorage.setItem('intentidy_cards', JSON.stringify(cards));
-  }, [cards]);
+    async function fetchCards() {
+      try {
+        const response = await fetch('/api/cards');
+        if (response.ok) {
+          const data = await response.json();
+          setCards(data);
+        } else {
+          setSyncStatus('error');
+        }
+      } catch (err) {
+        console.error("Error fetching cards from backend:", err);
+        setSyncStatus('error');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+    fetchCards();
+  }, []);
 
-  // Near real-time telemetry jitter simulation
+  // Near real-time telemetry jitter simulation (throttled to UI-only, no database write storms)
   useEffect(() => {
     const interval = setInterval(() => {
       setCards(prev => prev.map(card => {
@@ -69,8 +84,42 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleUpdateCard = (updatedCard: PortableCard) => {
+  const handleUpdateCard = async (updatedCard: PortableCard) => {
     setCards(prev => prev.map(c => c.id === updatedCard.id ? updatedCard : c));
+    setSyncStatus('syncing');
+    try {
+      const response = await fetch('/api/cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedCard)
+      });
+      if (response.ok) {
+        setSyncStatus('synced');
+      } else {
+        setSyncStatus('error');
+      }
+    } catch (err) {
+      console.error("Error updating card on server:", err);
+      setSyncStatus('error');
+    }
+  };
+
+  const handleDeleteCard = async (id: string) => {
+    setCards(prev => prev.filter(c => c.id !== id));
+    setSyncStatus('syncing');
+    try {
+      const response = await fetch(`/api/cards/${id}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        setSyncStatus('synced');
+      } else {
+        setSyncStatus('error');
+      }
+    } catch (err) {
+      console.error("Error deleting card on server:", err);
+      setSyncStatus('error');
+    }
   };
 
   const handleToggleTag = (tag: string) => {
@@ -144,6 +193,13 @@ export default function App() {
       setCards([...cards, newCard]);
       setNewCardInput('');
       setIsAddingCard(false);
+      setSyncStatus('syncing');
+      await fetch('/api/cards', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newCard)
+      });
+      setSyncStatus('synced');
     } catch (error) {
       console.error("Failed to add card:", error);
     } finally {

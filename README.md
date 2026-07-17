@@ -18,26 +18,28 @@ Traditional mobile git clients struggle by trying to squeeze desktop complexity 
 
 ## ✨ Features
 
-- **🛡️ Semantic Architecture Review**: Uses Gemini Pro to generate high-level capability maps and architecture overviews from repository descriptions.
-- **🧠 Autonomous Insight Dashboard**: Monitor simulated real-time latency, error thresholds, and build statuses across multiple systems.
+- **🛡️ Secure Semantic Architecture Review**: Uses Gemini Pro via a secure Backend-for-Frontend (BFF) Express proxy to generate high-level capability maps and architecture overviews from repository descriptions. No client-side key leakage!
+- **🧠 Autonomous Insight Dashboard**: Monitor real-time latency, error thresholds, and build statuses across multiple systems, persistent and portable.
 - **🔍 Mobile-First Diff Viewer**: Review semantic code changes optimized for small-screen cognition.
 - **🎯 Goal & Intent Tracking**: Manage active development objectives and project tasks directly on each card.
 - **⚡ Advanced Inventory**:
   - **Universal Search**: Fast, keyword-based system lookup.
   - **Tag Systems**: Multi-select tag filtering via a dedicated modal.
-  - **Persistence**: Auto-sync state to `localStorage` for session continuity.
-- **📋 System Logs**: Dedicated "Error Logs" tab for tracking historical build and deployment failures (simulated).
+  - **Durable Server-Side Persistence**: Fully synced state persisted on a server-side JSON database (`data/cards.json`) for authentic cross-device portability.
+  - **Telemetry Isolation**: UI-only telemetry simulation keeps visual jitter smooth while isolating it from database operations, preventing DB write-back storms.
+- **📋 System Logs**: Dedicated "Error Logs" tab for tracking historical build and deployment failures.
 
 ---
 
 ## 🛠️ Technology Stack
 
-- **Framework**: React 18+ (Vite)
-- **Styling**: Tailwind CSS
+- **Frontend**: React 18+ (Vite) styled with Tailwind CSS
+- **Backend**: Express Server (Node.js) handling proxy endpoints and DB persistence
 - **Animations**: `motion/react` (Framer Motion)
-- **Intelligence**: Google Gemini API (@google/genai)
+- **Intelligence**: Google Gemini API via a secure backend Express server (`@google/genai`)
 - **Icons**: Lucide React
-- **Persistence**: Browser LocalStorage
+- **Persistence**: File-based Server-Side Database (`data/cards.json`)
+- **Testing**: Vitest unit test suite
 
 ---
 
@@ -49,10 +51,6 @@ git clone <repository-url>
 
 # Install dependencies
 npm install
-
-# Set up environment variables
-cp .env.example .env
-# Add your GEMINI_API_KEY to the .env file
 ```
 
 ---
@@ -62,32 +60,44 @@ cp .env.example .env
 The application requires a **Google Gemini API Key** for semantic features.
 
 1. Obtain a key from [Google AI Studio](https://aistudio.google.com/).
-2. Add it to your `.env` file:
+2. Add it to your `.env` file (never commit actual secrets):
    ```env
    GEMINI_API_KEY=your_api_key_here
    ```
-
-> **Note**: In current development, this key is bundled into the client via Vite. For production, a server-side proxy is recommended.
 
 ---
 
 ## 🚀 Usage
 
-### Development
+### Development (Express + Vite Proxy)
+To start the development server running on port `3000`:
 ```bash
 npm run dev
 ```
 
-### Build
+### Build & Package (Production)
+Compiles both the React client app and the Express server into a production-ready standalone bundle inside `/dist`:
 ```bash
 npm run build
+```
+
+### Production Run
+Starts the packaged CommonJS standalone bundle:
+```bash
+npm run start
 ```
 
 ---
 
 ## 🧪 Testing
 
-The project is currently in a **Prototype/H-Fi Design** phase. Automated test coverage is planned for Phase 2. To run the linter:
+We use Vitest to run our core logic unit tests. To execute the automated tests:
+
+```bash
+npm run test
+```
+
+To run the static linter:
 
 ```bash
 npm run lint
@@ -97,10 +107,9 @@ npm run lint
 
 ## 🏗️ Architecture
 
-intenTidy is a client-side SPA.
-- **Global State**: Managed in `App.tsx` via standard React hooks.
-- **AI Integration**: Logic resides in `src/services/gemini.ts`.
-- **UI Components**: Modular components located in `src/components/`, with `CardView.tsx` acting as the primary orchestration interface.
+intenTidy utilizes a **Hybrid Full-Stack Architecture**:
+- **React Client**: Highly responsive UI managing state and user actions.
+- **BFF Express Server**: Prevents client-side key leakage by serving as a secure gateway for Gemini API commands and handles persistence for cards dynamically.
 
 For a detailed breakdown, see [ARCHITECTURE.md](./ARCHITECTURE.md).
 

@@ -1,54 +1,64 @@
 # ARCHITECTURE.md: intenTidy
 
 ## HIGH-LEVEL ARCHITECTURE
-intenTidy follows a **Client-Side SPA (Single Page Application)** architecture. It is built as a highly interactive, state-heavy dashboard where the frontend acts as the primary source of logic for both orchestration and visualization.
+intenTidy follows a **Hybrid Full-Stack Architecture** composed of a highly responsive **React Client** and a secure **Express Backend (BFF)**. The Express backend handles secure Gemini API proxying, robust CORS headers, and persistent card state, while the React client renders the primary orchestration dashboard, Sparkline visualizers, and stateful cards.
 
 **[Confidence: High]**
 
+---
+
 ## COMPONENT BREAKDOWN
-- **`App.tsx` (The Controller)**: 
-  - Manages the global `cards` array state.
-  - Implements the primary telemetry simulation loops (`setInterval`).
-  - Handles persistence synchronization with `localStorage`.
-  - Coordinates global UI states like the `FilterModal`, `InfoModal`, and Inventory Search.
+
+- **`server.ts` (The Express Backend)**:
+  - Serves as the Backend-for-Frontend (BFF) secure layer.
+  - Implements API endpoints `/api/gemini/*` to proxy AI analysis prompts, entirely hiding secrets like `GEMINI_API_KEY` from the browser.
+  - Manages durable JSON file-based database persistence (`/data/cards.json`) with unified REST CRUD endpoints (`GET /api/cards`, `POST /api/cards`, `DELETE /api/cards/:id`).
+  - Integrates Vite as middleware for hot-reloaded SPA development, and serves compiled production static assets in staging/production.
+- **`App.tsx` (The Controller)**:
+  - Coordinates global state by hydrating from the `/api/cards` REST endpoints on mount.
+  - Controls sorting (Alphabetical, Recent Sync, Build Status) and multi-tag filtering mechanisms.
+  - Simulates localized client-side telemetry jitter loops.
 - **`CardView.tsx` (The Organism)**:
-  - Encapsulates the logic for an individual "PortableCard."
-  - Manages internal navigation between "Architecture Overview" and "System Logs."
-  - Implements simulated GitHub webhook listeners.
-  - Handles local edit-mode state for card metadata.
-- **`services/gemini.ts` (Intelligence Layer)**:
-  - Wraps the `@google/genai` SDK.
-  - Contains the system prompts used to transform repo strings into semantic capability maps and architecture snapshots.
+  - Renders the interactive layout of an individual "PortableCard."
+  - Contains nested tab navigation between "Overview" and "System Logs."
+  - Mounts the **Quick Actions** semantic toolbar ('Review Diffs', 'Analyze Architecture', 'Generate Scaffold', 'Create Task', 'Trigger Deployment').
+  - Captures and displays robust AI analysis errors with dismissible warnings via `aiError` state tracking.
+- **`services/gemini.ts` (Client Service Layer)**:
+  - Provides simplified helper functions (`summarizeProject`, `generateSuggestions`, `generateArchitectureOverview`).
+  - Proxies calls strictly to `/api/gemini/*` endpoints to protect API key configurations.
+
+---
 
 ## DATA FLOW
 **[Confidence: High]**
-1. **Source of Truth**: The primary source of truth is the `cards` state in `App.tsx`, which is initialized from `constants.ts` and hydrated from `localStorage`.
-2. **State Management**: Uses standard React `useState` and `useEffect` hooks. There is no external state management library (like Redux or Zustand) currently in use.
-3. **Telemetry Flow**: A central `setInterval` in `App.tsx` iterates over all cards and applies random jitter to latency values, triggering a global re-render to update Sparkline visualizations.
 
-## EXTERNAL INTEGRATIONS
-- **Google Gemini API**: Used for all "Semantic Analysis" features. The API key is currently injected into the client bundle at build-time.
-- **GitHub Webhooks (Simulated)**: The code contains logic to simulate incoming pushes, intended to eventually be mapped to real GitHub Webhook ingress points.
+1. **Hydration**: On mount, `App.tsx` fetches the complete list of system cards from `GET /api/cards`. The server automatically seeds the database file `/data/cards.json` with standard `SAMPLE_CARDS` if it is initialized on a clean slate.
+2. **Persistence Mutation**: When cards are added, edited, or deleted, corresponding `POST` or `DELETE` fetch requests are triggered asynchronously. The Express server safely saves state changes to disk.
+3. **Telemetry & Write Storm Protection**: Simulated telemetry jitter updates the `cards` state purely on the client-side every 3 seconds. By decoupling these high-frequency visual jitter updates from database save operations, we protect our server database from excessive write storms.
+4. **AI Processing**: When an architecture re-analysis is requested, the client triggers `generateArchitectureOverview`. This is proxied to the server, processed using the `@google/genai` Node.js SDK, and the computed schema is merged back into client state.
+
+---
+
+## SECURITY MODEL
+**[Confidence: High]**
+
+- **Secret Isolation**: `GEMINI_API_KEY` resides strictly in the environment variables of the server-side container. It is never exposed in client configuration, Vite define blocks, or browser network payloads.
+- **Sanitized Failures**: AI analysis errors or network timeouts are trapped in try/catch blocks on both the client and server. If an AI call fails, the UI gracefully presents an error banner while preserving all other interactive functionalities.
+
+---
 
 ## DEPLOYMENT MODEL
 **[Confidence: High]**
-- **Runtime**: Node.js environment serving a static bundle.
-- **Build System**: Vite 6.0.
-- **Target Platform**: Cloud Run (as evidenced by the `.run.app` URLs in metadata).
-- **Environment Handling**: Uses `.env` for secrets like `GEMINI_API_KEY`, but these are incorrectly leaked into the frontend via Vite's `define` config.
 
-## OBSERVABILITY MODEL
-The observability model is currently **Simulated High-Fidelity**.
-- Latency history is stored as an array of timestamped values.
-- Error logs are stored as structured JSON objects within the card metadata.
-- Build statuses are represented as an enum: `success` | `failure` | `pending`.
+- **Runtime**: Node.js environment.
+- **Build System**: Vite compiles static frontend bundles to `dist/`, while `esbuild` bundles `server.ts` into a standalone, single-file CommonJS production server at `dist/server.cjs`.
+- **Target Platform**: Cloud Run (autoscaled, running container-ingress on port 3000).
+- **Start Command**: Standalone execution via `node dist/server.cjs`.
 
-## ARCHITECTURAL RISKS
-1. **Security Vulnerability**: The client-side exposure of the Gemini API key.
-2. **Performance Bottleneck**: Global re-renders on telemetry updates will scale poorly as the number of cards increases.
-3. **Data Fragility**: Reliance on `localStorage` leads to high data loss risk and lacks true multi-device "portability" (requires manual move of browser data).
+---
 
-## RECOMMENDED IMPROVEMENTS
-1. **BFF (Backend-for-Frontend)**: Implement an Express server to proxy Gemini requests and handle real GitHub Webhook authentication.
-2. **Atomic States**: Use a library like `Jotai` or `Zustand` to update telemetry data without re-rendering the entire inventory list.
-3. **Durable Storage**: Transition to Firestore or a similar DB to enable the promised "PortableCards" cross-device continuity.
+## COMPLETED ARCHITECTURAL RISKS MITIGATION
+
+1. **Security Vulnerability (Mitigated)**: Removed the direct bundling of `GEMINI_API_KEY` on the client. All AI processing is handled behind our BFF proxy.
+2. **Performance Bottleneck (Mitigated)**: Isolated visual telemetry loops from persistence operations, eliminating DB write storms and optimizing performance.
+3. **Data Fragility (Mitigated)**: Swapped volatile browser-only `localStorage` for durable, device-agnostic, server-side persistence.

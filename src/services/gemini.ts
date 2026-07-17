@@ -3,111 +3,68 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { GoogleGenAI, Type } from "@google/genai";
 import { PortableCard, Suggestion } from "../types";
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
 
 export async function generateSuggestions(card: PortableCard): Promise<Suggestion[]> {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Given this software system card:
-      ${JSON.stringify(card, null, 2)}
-      
-      Suggest 2-3 autonomous maintenance or improvement actions. 
-      Focus on recent telemetry if available, or architectural gaps.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              id: { type: Type.STRING },
-              type: { type: Type.STRING, enum: ["security", "performance", "feature", "test"] },
-              message: { type: Type.STRING },
-              actions: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              }
-            },
-            required: ["id", "type", "message", "actions"]
-          }
-        }
-      }
+    const response = await fetch("/api/gemini/suggestions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ card }),
     });
 
-    const text = response.text || "[]";
-    return JSON.parse(text);
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+    }
+
+    return await response.json();
   } catch (error) {
-    console.error("Error generating suggestions:", error);
+    console.error("Error generating suggestions via proxy:", error);
     return [];
   }
 }
 
 export async function summarizeProject(context: string): Promise<string> {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Provide a concise 1-sentence semantic summary for this project context: ${context}. 
-      Make it sound professional but technical.`,
+    const response = await fetch("/api/gemini/summarize", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ context }),
     });
-    return response.text || "Semantic summary unavailable.";
+
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return data.summary || "Semantic summary unavailable.";
   } catch (error) {
-    console.error("Error summarizing project:", error);
+    console.error("Error summarizing project via proxy:", error);
     return "Error generating summary.";
   }
 }
 
 export async function generateArchitectureOverview(card: PortableCard): Promise<Partial<PortableCard['summary']>> {
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: `Perform a deep architectural analysis of this system:
-      ${JSON.stringify(card, null, 2)}
-      
-      Return a structured overview including:
-      1. Formal architecture pattern
-      2. 3-5 core capabilities
-      3. Technology stack
-      4. Key subsystems with their purpose and estimated health.`,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            architecture: { type: Type.STRING },
-            capabilities: { 
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            techStack: { 
-              type: Type.ARRAY,
-              items: { type: Type.STRING }
-            },
-            subsystems: {
-              type: Type.ARRAY,
-              items: {
-                type: Type.OBJECT,
-                properties: {
-                  name: { type: Type.STRING },
-                  purpose: { type: Type.STRING },
-                  status: { type: Type.STRING, enum: ["healthy", "degraded", "critical"] }
-                },
-                required: ["name", "purpose", "status"]
-              }
-            }
-          },
-          required: ["architecture", "capabilities", "techStack", "subsystems"]
-        }
-      }
+    const response = await fetch("/api/gemini/architecture", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ card }),
     });
 
-    const text = response.text || "{}";
-    return JSON.parse(text);
+    if (!response.ok) {
+      throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+    }
+
+    return await response.json();
   } catch (error) {
-    console.error("Error generating architecture overview:", error);
+    console.error("Error generating architecture overview via proxy:", error);
     return {};
   }
 }
