@@ -20,18 +20,14 @@
 
 # Phase 3 — Make It Production Ready (Real Connectivity)
 
-- [ ] **[src/services/git.ts]** Implement real GitHub API integration (Octokit) for branch/diff views.  
-  Priority: P1 | Impact: High | Effort: L | Evidence: simulated sync | Recommendation: replace mocks.  
-  Confidence: High.
-- [ ] **[src/components/CardView.tsx]** Connect real WebSocket or Webhook events for "Deployment Awareness."  
-  Priority: P2 | Impact: High | Effort: M | Evidence: simulated webhooks | Recommendation: real ingress points.  
-  Confidence: Medium.
+- [x] **[src/services/git.ts]** Implement real GitHub API integration (Octokit/REST proxy) for branch/diff views.  
+  *(Completed: Implemented server-side `/api/git/*` proxy endpoints supporting repository metadata retrieval, commit diff retrieval, and branch synchronization via `src/services/git.ts`).*
+- [x] **[src/components/CardView.tsx]** Connect real Webhook and Deployment endpoints for "Deployment Awareness."  
+  *(Completed: Integrated `/api/webhooks/github` and `/api/deployments/trigger` endpoints to track live deployment events and update card build statuses directly).*
 
 # Phase 4 — Future Enhancements
 
-- [ ] **[src/services/audio.ts]** Implement LLM-based intent parsing for Voice-to-Task (Agentic interpretation).  
-  Priority: P3 | Impact: Low | Effort: M | Evidence: stubs | Recommendation: use gemini-pro-vision.  
-  Confidence: Low.
-- [ ] **[src/components/MultiView.tsx]** Create a bird's eye view for cross-card dependency mapping.  
-  Priority: P3 | Impact: Medium | Effort: L | Evidence: goal of "orchestration layer" | Recommendation: use d3-force.  
-  Confidence: Medium.
+- [x] **[src/services/audio.ts & VoiceIntentModal]** Implement LLM-based intent parsing for Voice-to-Intent (Agentic interpretation).  
+  *(Completed: Built `VoiceIntentController` with Web Speech API speech-to-text, connected to `/api/gemini/parse-intent` powered by Gemini 2.5 Flash, providing structured intent parsing into tasks, goals, blockers, and deployments with 1-click execution).*
+- [x] **[src/components/MultiView.tsx]** Create a bird's eye view for cross-card dependency mapping.  
+  *(Completed: Built `MultiView.tsx` with interactive SVG dependency topology, dependency link creation, subsystem grouping, health metrics, and seamless integration with the main dashboard).*

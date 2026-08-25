@@ -9,20 +9,32 @@ intenTidy follows a **Hybrid Full-Stack Architecture** composed of a highly resp
 
 ## COMPONENT BREAKDOWN
 
-- **`server.ts` (The Express Backend)**:
+- **`server.ts` (The Express Backend & BFF Gateway)**:
   - Serves as the Backend-for-Frontend (BFF) secure layer.
-  - Implements API endpoints `/api/gemini/*` to proxy AI analysis prompts, entirely hiding secrets like `GEMINI_API_KEY` from the browser.
+  - Implements API endpoints `/api/gemini/*` to proxy AI analysis prompts and natural language intent parsing (`/api/gemini/parse-intent`), completely isolating `GEMINI_API_KEY` from the browser.
+  - Hosts Git proxy endpoints (`/api/git/repo-info`, `/api/git/diffs`, `/api/git/sync/:id`) that interact with GitHub APIs while falling back cleanly to card metadata.
+  - Ingests CI/CD webhooks (`/api/webhooks/github`) and dispatches deployment triggers (`/api/deployments/trigger`, `/api/deployments/:id/status`).
   - Manages durable JSON file-based database persistence (`/data/cards.json`) with unified REST CRUD endpoints (`GET /api/cards`, `POST /api/cards`, `DELETE /api/cards/:id`).
   - Integrates Vite as middleware for hot-reloaded SPA development, and serves compiled production static assets in staging/production.
 - **`App.tsx` (The Controller)**:
   - Coordinates global state by hydrating from the `/api/cards` REST endpoints on mount.
-  - Controls sorting (Alphabetical, Recent Sync, Build Status) and multi-tag filtering mechanisms.
+  - Controls view mode switching between the standard **Cards Grid** and the interactive **Topology Map (MultiView)**.
+  - Manages sorting (Alphabetical, Recent Sync, Build Status) and multi-tag filtering mechanisms.
+  - Coordinates the Voice-to-Intent modal and translates parsed agentic commands into immediate state mutations.
   - Simulates localized client-side telemetry jitter loops.
 - **`CardView.tsx` (The Organism)**:
   - Renders the interactive layout of an individual "PortableCard."
   - Contains nested tab navigation between "Overview" and "System Logs."
-  - Mounts the **Quick Actions** semantic toolbar ('Review Diffs', 'Analyze Architecture', 'Generate Scaffold', 'Create Task', 'Trigger Deployment').
+  - Mounts the **Quick Actions** semantic toolbar ('Review Diffs', 'Analyze Architecture', 'Generate Scaffold', 'Create Task', 'Trigger Deployment', 'Sync Git').
   - Captures and displays robust AI analysis errors with dismissible warnings via `aiError` state tracking.
+- **`MultiView.tsx` (Cross-Card Topology Mapping)**:
+  - Visualizes complex cross-system architectures with SVG spline connectors, dependency badges, directional data flow links, and topology metrics.
+  - Supports dynamic link creation between systems (e.g. `consumes-api`, `depends-on`, `data-pipeline`).
+- **`VoiceIntentModal.tsx` & `services/audio.ts` (Agentic Intent Layer)**:
+  - Uses the browser's Web Speech API to capture natural language commands and streams them to `/api/gemini/parse-intent`.
+  - Parses commands into actionable JSON operations (`add_task`, `add_goal`, `set_blocker`, `trigger_deploy`, `create_card`) with instant 1-click execution.
+- **`services/git.ts` (Client Git Service Layer)**:
+  - Provides proxy client calls to `/api/git/*` to fetch live commits, diffs, and repository synchronization.
 - **`services/gemini.ts` (Client Service Layer)**:
   - Provides simplified helper functions (`summarizeProject`, `generateSuggestions`, `generateArchitectureOverview`).
   - Proxies calls strictly to `/api/gemini/*` endpoints to protect API key configurations.

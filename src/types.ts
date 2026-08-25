@@ -105,3 +105,37 @@ export interface ErrorLog {
   message: string;
   level: 'error' | 'warning';
 }
+
+export interface VoiceIntentResult {
+  targetCardId?: string;
+  targetCardName?: string;
+  actionType: 'add_task' | 'add_goal' | 'set_blocker' | 'trigger_deploy' | 'create_card' | 'analyze' | 'general';
+  payload: {
+    title?: string;
+    description?: string;
+    goal?: string;
+    blocker?: string;
+    status?: 'todo' | 'in-progress' | 'done';
+    tags?: string[];
+  };
+  naturalResponse: string;
+}
+
+export interface DependencyLink {
+  sourceId: string;
+  targetId: string;
+  relationType: 'depends_on' | 'monitors' | 'orchestrates' | 'data_flow';
+  label?: string;
+}
+
+export interface DeploymentEvent {
+  id: string;
+  cardId: string;
+  cardName: string;
+  status: 'pending' | 'success' | 'failure';
+  environment: 'production' | 'staging' | 'dev';
+  triggeredBy: string;
+  timestamp: string;
+  logs: string[];
+}
+

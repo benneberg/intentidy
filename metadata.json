@@ -1,6 +1,10 @@
 {
   "name": "intenTidy",
-  "description": "A semantic mobile orchestration layer for autonomous software entities and portable project cards.",
-  "requestFramePermissions": [],
-  "majorCapabilities": []
+  "description": "A semantic mobile orchestration layer for autonomous software entities, portable project cards, and live telemetry governance.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }

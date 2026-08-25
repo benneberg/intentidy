@@ -18,7 +18,11 @@ Traditional mobile git clients struggle by trying to squeeze desktop complexity 
 
 ## ✨ Features
 
-- **🛡️ Secure Semantic Architecture Review**: Uses Gemini Pro via a secure Backend-for-Frontend (BFF) Express proxy to generate high-level capability maps and architecture overviews from repository descriptions. No client-side key leakage!
+- **🛡️ Secure Semantic Architecture Review**: Uses Gemini 2.5 Flash via a secure Backend-for-Frontend (BFF) Express proxy to generate high-level capability maps and architecture overviews from repository descriptions. No client-side key leakage!
+- **🎙️ Agentic Voice-to-Intent**: Dictate goals, tasks, blockers, or deployment triggers in natural language. Speech is captured via the Web Speech API and parsed by Gemini into structured executable operations with one-click application.
+- **🌐 Cross-System Topology Mapping (MultiView)**: An interactive bird's-eye topology view mapping dependencies, data pipelines, and shared libraries across multiple PortableCards.
+- **🔗 GitHub & Git API Proxy**: Inspect live repository metadata, branch commits, and diffs via backend proxy endpoints (`/api/git/*`).
+- **🚀 Real-Time Deployment & Webhooks**: Ingress point for GitHub CI/CD webhooks (`/api/webhooks/github`) and deployment trigger endpoints (`/api/deployments/trigger`) with live status feedback.
 - **🧠 Autonomous Insight Dashboard**: Monitor real-time latency, error thresholds, and build statuses across multiple systems, persistent and portable.
 - **🔍 Mobile-First Diff Viewer**: Review semantic code changes optimized for small-screen cognition.
 - **🎯 Goal & Intent Tracking**: Manage active development objectives and project tasks directly on each card.

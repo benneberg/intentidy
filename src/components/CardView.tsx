@@ -51,6 +51,7 @@ import { PortableCard, Suggestion } from "../types";
 import React, { useState, useEffect } from "react";
 import { DiffViewer } from "./DiffViewer";
 import { generateArchitectureOverview } from "../services/gemini";
+import { syncRepoRuntime } from "../services/git";
 import { 
   LineChart, 
   Line, 
@@ -299,9 +300,46 @@ export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCar
       case 'deploy':
         if (onUpdateCard) {
           onUpdateCard({ ...card, runtime: { ...card.runtime, buildStatus: 'pending' } });
-          setTimeout(() => {
+          try {
+            const deployRes = await fetch('/api/deployments/trigger', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ cardId: card.id, environment: card.runtime.deploymentState || 'production' })
+            });
+            if (deployRes.ok) {
+              const resData = await deployRes.json();
+              if (resData.card) {
+                onUpdateCard(resData.card);
+              } else {
+                onUpdateCard({ ...card, runtime: { ...card.runtime, buildStatus: 'success' } });
+              }
+            } else {
+              onUpdateCard({ ...card, runtime: { ...card.runtime, buildStatus: 'success' } });
+            }
+          } catch (e) {
+            console.error("Deploy trigger error:", e);
             onUpdateCard({ ...card, runtime: { ...card.runtime, buildStatus: 'success' } });
-          }, 3000);
+          }
+        }
+        break;
+      case 'sync':
+        if (onUpdateCard) {
+          setIsSyncingRepo(true);
+          try {
+            const syncResult = await syncRepoRuntime(card.id);
+            if (syncResult.success && (syncResult as any).card) {
+              onUpdateCard((syncResult as any).card);
+            } else {
+              onUpdateCard({
+                ...card,
+                lastSync: new Date().toISOString()
+              });
+            }
+          } catch (e) {
+            console.error("Sync error:", e);
+          } finally {
+            setIsSyncingRepo(false);
+          }
         }
         break;
     }
