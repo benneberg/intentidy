@@ -71,7 +71,7 @@ interface CardViewProps {
   key?: string | number;
 }
 
-export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCard }: CardViewProps) {
+export const CardView = React.memo(function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCard }: CardViewProps) {
   const [showDiffs, setShowDiffs] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -94,7 +94,7 @@ export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCar
     e.stopPropagation();
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) {
-      alert("Speech recognition not supported in this browser.");
+      setAiError("Speech recognition is not supported in this browser environment.");
       return;
     }
     const recognition = new SpeechRecognition();
@@ -1091,8 +1091,8 @@ export function CardView({ card, isExpanded, onToggle, onUpdateCard, onDeleteCar
       )}
     </AnimatePresence>
   </motion.div>
-);
-}
+  );
+});
 
 function StatusDot({ status }: { status: 'success' | 'failure' | 'pending' }) {
   const colors = {

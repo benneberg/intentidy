@@ -40,6 +40,8 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [viewMode, setViewMode] = useState<'grid' | 'topology'>('grid');
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
+  const [inventorySummary, setInventorySummary] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
   
   // Modals state
   const [activeInfoTab, setActiveInfoTab] = useState<'about' | 'guide' | 'faq' | null>(null);
@@ -343,13 +345,20 @@ export default function App() {
 
              <button 
               onClick={async () => {
-                const context = cards.map(c => `${c.name}: ${c.summary.description}`).join('; ');
-                const summary = await summarizeProject(context);
-                alert(`Inventory Intelligence Summary: ${summary}`);
+                setIsSummarizing(true);
+                try {
+                  const context = cards.map(c => `${c.name}: ${c.summary.description}`).join('; ');
+                  const summary = await summarizeProject(context);
+                  setInventorySummary(summary);
+                } finally {
+                  setIsSummarizing(false);
+                }
               }}
-              className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-neutral-100 rounded-full text-xs font-bold text-neutral-800 hover:bg-neutral-200 transition-colors"
+              disabled={isSummarizing}
+              className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-neutral-100 rounded-full text-xs font-bold text-neutral-800 hover:bg-neutral-200 transition-colors disabled:opacity-50"
              >
-                <Sparkles size={14} /> pcard summarize
+                <Sparkles size={14} className={isSummarizing ? "animate-spin text-purple-600" : ""} />
+                {isSummarizing ? "analyzing..." : "pcard summarize"}
              </button>
 
              <button 
@@ -498,6 +507,61 @@ export default function App() {
         onClose={() => setActiveInfoTab(null)}
         initialTab={activeInfoTab || 'about'}
       />
+
+      {/* Intelligence Summary Modal */}
+      <AnimatePresence>
+        {inventorySummary && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center p-4 md:p-6 bg-neutral-900/60 backdrop-blur-sm"
+            onClick={() => setInventorySummary(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-3xl p-6 md:p-8 w-full max-w-lg shadow-2xl space-y-6 border border-neutral-100"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-neutral-100 pb-4">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-purple-50 text-purple-700">
+                    <Sparkles size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-neutral-900">Inventory Intelligence</h3>
+                    <p className="text-xs text-neutral-500 font-mono">pcard-cluster-analysis // v1.2</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setInventorySummary(null)}
+                  className="p-1.5 hover:bg-neutral-100 rounded-full text-neutral-400 hover:text-neutral-900 transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 text-sm text-neutral-700 leading-relaxed font-light">
+                {inventorySummary}
+              </div>
+
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-[11px] font-mono text-neutral-400">
+                  Synthesized across {cards.length} portable cards
+                </span>
+                <button
+                  onClick={() => setInventorySummary(null)}
+                  className="px-4 py-2 bg-neutral-900 text-white rounded-xl text-xs font-semibold hover:bg-neutral-800 transition-colors"
+                >
+                  Dismiss
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Add Card Modal optimized for mobile */}
       <AnimatePresence>

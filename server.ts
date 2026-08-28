@@ -111,7 +111,7 @@ app.post("/api/gemini/suggestions", async (req, res) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+      model: "gemini-2.5-flash",
       contents: `Given this software system card:
       ${JSON.stringify(card, null, 2)}
       
@@ -160,7 +160,7 @@ app.post("/api/gemini/summarize", async (req, res) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+      model: "gemini-2.5-flash",
       contents: `Provide a concise 1-sentence semantic summary for this project context: ${context}. 
       Make it sound professional but technical.`,
     });
@@ -185,7 +185,7 @@ app.post("/api/gemini/architecture", async (req, res) => {
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+      model: "gemini-2.5-flash",
       contents: `Perform a deep architectural analysis of this system:
       ${JSON.stringify(card, null, 2)}
       
@@ -261,7 +261,7 @@ Parse the user's intent. Determine:
 4. A friendly, professional 1-sentence confirmation response for the user interface.`;
 
     const response = await ai.models.generateContent({
-      model: "gemini-3.7-flash",
+      model: "gemini-2.5-flash",
       contents: prompt,
       config: {
         responseMimeType: "application/json",
@@ -729,6 +729,35 @@ app.get("/api/telemetry/stats", (req, res) => {
       failure: cards.filter(c => c.runtime.buildStatus === "failure").length
     }
   });
+});
+
+app.get("/metrics", (req, res) => {
+  const cards = readCards();
+  const systemsWithTelemetry = cards.filter(c => c.runtime?.telemetry);
+  const totalLatency = systemsWithTelemetry.reduce((acc, c) => acc + (c.runtime.telemetry?.latency || 0), 0);
+  const avgLatency = systemsWithTelemetry.length ? Math.round(totalLatency / systemsWithTelemetry.length) : 0;
+  const totalErrors = systemsWithTelemetry.reduce((acc, c) => acc + (c.runtime.telemetry?.errors || 0), 0);
+
+  const lines = [
+    "# HELP intentidy_systems_total Total registered portable software cards",
+    "# TYPE intentidy_systems_total gauge",
+    `intentidy_systems_total ${cards.length}`,
+    "",
+    "# HELP intentidy_avg_latency_ms Average P95 telemetry latency across systems",
+    "# TYPE intentidy_avg_latency_ms gauge",
+    `intentidy_avg_latency_ms ${avgLatency}`,
+    "",
+    "# HELP intentidy_total_errors Total active error spikes recorded across entities",
+    "# TYPE intentidy_total_errors counter",
+    `intentidy_total_errors ${totalErrors}`,
+    "",
+    "# HELP intentidy_system_status System status counts",
+    "# TYPE intentidy_system_status gauge",
+    ...cards.map(c => `intentidy_system_status{id="${c.id}",name="${c.name.replace(/[^a-zA-Z0-9_]/g, '_')}",status="${c.runtime.buildStatus}"} 1`)
+  ];
+
+  res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+  res.send(lines.join("\n") + "\n");
 });
 
 // --- VITE MIDDLEWARE SETUP & SERVER INITIALIZATION ---

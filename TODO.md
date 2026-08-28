@@ -1,33 +1,35 @@
-# TODO — intenTidy Production Path
+# TODO — intenTidy Production Roadmap
 
-# Phase 1 — Make It Work (Security & Persistence)
+This roadmap outlines active and upcoming tasks to extend intenTidy's production capabilities for multi-tenant and enterprise cloud deployments. All prior baseline security, persistence, observability, and test suite tasks have been completed and verified.
 
-- [x] **[vite.config.ts]** Remove `process.env.GEMINI_API_KEY` from `define` block.  
-  *(Completed: Key removed from client-side config to eliminate exposure risks).*
-- [x] **[src/services/gemini.ts]** Refactor to use `/api/gemini` proxy endpoints instead of direct SDK calls.  
-  *(Completed: Refactored prompt handling to securely route all queries through our Express server backend).*
-- [x] **[src/App.tsx]** Replace `localStorage` with Firebase Firestore or a real PostgreSQL backend.  
-  *(Completed: Created a dedicated Express CRUD API with backend database file persistence at `/data/cards.json` to store PortableCards durable across devices).*
+---
 
-# Phase 2 — Make It Reliable (Stability & Observation)
+## 1. Authentication & Multi-Tenant Access Control (RBAC)
+- [ ] **[JWT / OAuth Session Layer]**
+  - Implement token-based authentication on `server.ts` (`Authorization: Bearer <token>`) so team members only access systems they own or are assigned to.
+  - Add role-based permissions (`viewer`, `operator`, `owner`) to `PortableCard` entities.
+- [ ] **[Team Workspace Scoping]**
+  - Partition `/data/cards.json` storage by organization/workspace ID to allow isolated multi-tenant data structures.
 
-- [x] **[src/__tests__]** Bootstrap Vitest and implement first 10 unit tests for core logic.  
-  *(Completed: Bootstrapped Vitest and implemented `/src/__tests__/logic.spec.ts` containing 10 tests with 100% pass rate covering search, tag-filtering, date sorting, state mutations, telemetry baseline constraints, and AI network failures).*
-- [x] **[src/components/CardView.tsx]** Implement real error handling for AI re-analysis failures.  
-  *(Completed: Added state trackers for `aiError` and integrated elegant, interactive rose-colored alert banners inside the card views when AI analysis throws network or model exceptions).*
-- [x] **[src/App.tsx]** Throttle/Debounce telemetry updates to prevent re-render thrashing.  
-  *(Completed: Isolated simulated client-side telemetry jitter from actual state mutations, eliminating redundant database server writes and avoiding write storms).*
+---
 
-# Phase 3 — Make It Production Ready (Real Connectivity)
+## 2. Security & Webhook Hardening
+- [ ] **[HMAC Webhook Verification]**
+  - Implement cryptographic verification (`X-Hub-Signature-256`) on `/api/webhooks/github` payloads using a configurable secret key (`GITHUB_WEBHOOK_SECRET`).
+  - Add rate-limiting middleware (`express-rate-limit`) on public API routes and AI proxies to protect against brute-force or denial-of-service attempts.
 
-- [x] **[src/services/git.ts]** Implement real GitHub API integration (Octokit/REST proxy) for branch/diff views.  
-  *(Completed: Implemented server-side `/api/git/*` proxy endpoints supporting repository metadata retrieval, commit diff retrieval, and branch synchronization via `src/services/git.ts`).*
-- [x] **[src/components/CardView.tsx]** Connect real Webhook and Deployment endpoints for "Deployment Awareness."  
-  *(Completed: Integrated `/api/webhooks/github` and `/api/deployments/trigger` endpoints to track live deployment events and update card build statuses directly).*
+---
 
-# Phase 4 — Future Enhancements
+## 3. End-to-End Integration & Real-Time Sync
+- [ ] **[Playwright E2E Automation]**
+  - Add browser integration tests simulating the end-to-end user journey: card creation -> voice dictation -> topology linking -> deployment trigger.
+- [ ] **[WebSocket / Server-Sent Events (SSE)]**
+  - Upgrade client-server synchronization from REST polling to a lightweight SSE channel for live, collaborative cross-device updates when multiple engineers view the dashboard.
 
-- [x] **[src/services/audio.ts & VoiceIntentModal]** Implement LLM-based intent parsing for Voice-to-Intent (Agentic interpretation).  
-  *(Completed: Built `VoiceIntentController` with Web Speech API speech-to-text, connected to `/api/gemini/parse-intent` powered by Gemini 2.5 Flash, providing structured intent parsing into tasks, goals, blockers, and deployments with 1-click execution).*
-- [x] **[src/components/MultiView.tsx]** Create a bird's eye view for cross-card dependency mapping.  
-  *(Completed: Built `MultiView.tsx` with interactive SVG dependency topology, dependency link creation, subsystem grouping, health metrics, and seamless integration with the main dashboard).*
+---
+
+## 4. Cloud Infrastructure & DevOps
+- [ ] **[Multi-Stage Dockerfile & Container Optimization]**
+  - Provide a standardized, minimal Alpine-based `Dockerfile` with multi-stage build caching for rapid production deployments.
+- [ ] **[Kubernetes / Helm Manifests]**
+  - Add Helm chart templates and Kubernetes deployment manifests with automated health probes (`/api/health`, `/metrics`).
