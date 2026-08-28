@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
@@ -18,83 +19,406 @@ app.use(express.json({ limit: "10mb" }));
 const apiKey = process.env.GEMINI_API_KEY;
 const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
-// --- Persistence Layer Setup ---
+// --- Persistence & Multi-Tenant Workspace Setup ---
 const DATA_DIR = path.join(process.cwd(), "data");
-const CARDS_FILE = path.join(DATA_DIR, "cards.json");
+const WORKSPACES_DIR = path.join(DATA_DIR, "workspaces");
+const DEFAULT_CARDS_FILE = path.join(DATA_DIR, "cards.json");
 
-// Helper to write cards
-function writeCards(cards: any[]) {
-  try {
-    fs.writeFileSync(CARDS_FILE, JSON.stringify(cards, null, 2), "utf-8");
-  } catch (error) {
-    console.error("Error writing cards.json:", error);
-  }
-}
-
-// Ensure data directory and default cards file exist
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
-if (!fs.existsSync(CARDS_FILE)) {
-  writeCards(SAMPLE_CARDS);
+if (!fs.existsSync(WORKSPACES_DIR)) {
+  fs.mkdirSync(WORKSPACES_DIR, { recursive: true });
 }
 
-// Helper to read cards
-function readCards(): any[] {
+function getWorkspaceFilePath(workspaceId = "default"): string {
+  const safeId = workspaceId.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!safeId || safeId === "default") {
+    return DEFAULT_CARDS_FILE;
+  }
+  const wsDir = path.join(WORKSPACES_DIR, safeId);
+  if (!fs.existsSync(wsDir)) {
+    fs.mkdirSync(wsDir, { recursive: true });
+  }
+  return path.join(wsDir, "cards.json");
+}
+
+function writeCards(cards: any[], workspaceId = "default") {
   try {
-    if (fs.existsSync(CARDS_FILE)) {
-      const content = fs.readFileSync(CARDS_FILE, "utf-8");
+    const filePath = getWorkspaceFilePath(workspaceId);
+    fs.writeFileSync(filePath, JSON.stringify(cards, null, 2), "utf-8");
+  } catch (error) {
+    console.error(`Error writing cards for workspace ${workspaceId}:`, error);
+  }
+}
+
+function readCards(workspaceId = "default"): any[] {
+  try {
+    const filePath = getWorkspaceFilePath(workspaceId);
+    if (fs.existsSync(filePath)) {
+      const content = fs.readFileSync(filePath, "utf-8");
       return JSON.parse(content);
     }
   } catch (error) {
-    console.error("Error reading cards.json:", error);
+    console.error(`Error reading cards for workspace ${workspaceId}:`, error);
   }
   return [];
 }
 
-// --- API ROUTES ---
+// Ensure default and seeded sample workspaces exist
+if (!fs.existsSync(DEFAULT_CARDS_FILE)) {
+  writeCards(SAMPLE_CARDS, "default");
+}
 
-// Cards CRUD Endpoints
+// Seed additional sample team workspaces if not present
+const engineeringCardsFile = getWorkspaceFilePath("engineering");
+if (!fs.existsSync(engineeringCardsFile)) {
+  writeCards(SAMPLE_CARDS.filter(c => c.tags.includes("core") || c.tags.includes("semantic")), "engineering");
+}
+
+const securityCardsFile = getWorkspaceFilePath("security-ops");
+if (!fs.existsSync(securityCardsFile)) {
+  writeCards(SAMPLE_CARDS.filter(c => c.tags.includes("security") || c.name.toLowerCase().includes("guard")), "security-ops");
+}
+
+// --- JWT & RBAC (Role-Based Access Control) ---
+const JWT_SECRET = process.env.JWT_SECRET || "intentidy-enterprise-secret-key-2026";
+
+function base64UrlEncode(str: string): string {
+  return Buffer.from(str).toString("base64url");
+}
+
+function base64UrlDecode(str: string): string {
+  return Buffer.from(str, "base64url").toString("utf-8");
+}
+
+function signJwt(payload: any, secret = JWT_SECRET, expiresInSec = 86400): string {
+  const header = { alg: "HS256", typ: "JWT" };
+  const now = Math.floor(Date.now() / 1000);
+  const fullPayload = {
+    ...payload,
+    iat: now,
+    exp: now + expiresInSec
+  };
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const encodedPayload = base64UrlEncode(JSON.stringify(fullPayload));
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest("base64url");
+  return `${encodedHeader}.${encodedPayload}.${signature}`;
+}
+
+function verifyJwt(token: string, secret = JWT_SECRET): any | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const [headerB64, payloadB64, sigB64] = parts;
+    const expectedSig = crypto
+      .createHmac("sha256", secret)
+      .update(`${headerB64}.${payloadB64}`)
+      .digest("base64url");
+    if (expectedSig !== sigB64) return null;
+    const payload = JSON.parse(base64UrlDecode(payloadB64));
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp < now) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+const ROLE_HIERARCHY: Record<string, number> = {
+  viewer: 1,
+  operator: 2,
+  owner: 3
+};
+
+function hasRequiredRole(userRole: string, requiredRole: string): boolean {
+  const userLevel = ROLE_HIERARCHY[userRole] || 1;
+  const reqLevel = ROLE_HIERARCHY[requiredRole] || 1;
+  return userLevel >= reqLevel;
+}
+
+// Authentication & Workspace Scoping Middleware
+function authMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+  const authHeader = req.headers["authorization"];
+  const workspaceHeader = (req.headers["x-workspace-id"] as string) || (req.query.workspaceId as string) || "default";
+
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    const token = authHeader.slice(7).trim();
+    const payload = verifyJwt(token);
+    if (payload) {
+      (req as any).user = {
+        userId: payload.userId || "usr-anon",
+        email: payload.email || "user@intentidy.io",
+        name: payload.name || "Enterprise User",
+        role: payload.role || "operator",
+        workspaceId: payload.workspaceId || workspaceHeader,
+        isGuest: false
+      };
+      (req as any).workspaceId = payload.workspaceId || workspaceHeader;
+      return next();
+    }
+  }
+
+  // Fallback session for interactive demo & local dashboard
+  (req as any).user = {
+    userId: "usr-guest",
+    email: "guest@intentidy.local",
+    name: "Guest Operator",
+    role: "operator",
+    workspaceId: workspaceHeader,
+    isGuest: true
+  };
+  (req as any).workspaceId = workspaceHeader;
+  next();
+}
+
+function requireRole(minRole: 'viewer' | 'operator' | 'owner') {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const user = (req as any).user;
+    if (!user || !hasRequiredRole(user.role, minRole)) {
+      res.status(403).json({
+        error: `Forbidden: Action requires minimum role '${minRole}', but current role is '${user?.role || "unassigned"}'`,
+        requiredRole: minRole,
+        currentRole: user?.role
+      });
+      return;
+    }
+    next();
+  };
+}
+
+// --- Sliding-Window Rate Limiting Middleware ---
+interface RateLimitRecord {
+  count: number;
+  resetAt: number;
+}
+const rateLimitMap = new Map<string, RateLimitRecord>();
+const DEFAULT_MAX_REQ = parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "120", 10);
+
+function rateLimiter(maxRequests: number = DEFAULT_MAX_REQ, windowMs: number = 60000) {
+  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (
+      req.path === "/api/health" ||
+      req.path === "/metrics" ||
+      req.path === "/api/events" ||
+      req.path.startsWith("/@") ||
+      req.path.startsWith("/src/") ||
+      req.path.startsWith("/node_modules/")
+    ) {
+      return next();
+    }
+
+    const ip = req.ip || req.socket.remoteAddress || "client";
+    const key = `${ip}:${Math.floor(Date.now() / windowMs)}`;
+    const now = Date.now();
+
+    const record = rateLimitMap.get(key) || { count: 0, resetAt: now + windowMs };
+    record.count++;
+    rateLimitMap.set(key, record);
+
+    if (rateLimitMap.size > 10000) {
+      for (const [k, v] of rateLimitMap.entries()) {
+        if (v.resetAt < now) rateLimitMap.delete(k);
+      }
+    }
+
+    const remaining = Math.max(0, maxRequests - record.count);
+    res.setHeader("RateLimit-Limit", maxRequests);
+    res.setHeader("RateLimit-Remaining", remaining);
+    res.setHeader("RateLimit-Reset", Math.ceil(record.resetAt / 1000));
+
+    if (record.count > maxRequests) {
+      res.status(429).json({
+        error: "Too Many Requests",
+        message: `Rate limit of ${maxRequests} requests per minute exceeded. Try again in ${Math.ceil((record.resetAt - now) / 1000)}s.`,
+        retryAfterSec: Math.ceil((record.resetAt - now) / 1000)
+      });
+      return;
+    }
+
+    next();
+  };
+}
+
+// Mount Middlewares
+app.use(rateLimiter());
+app.use(authMiddleware);
+
+// --- Real-Time Server-Sent Events (SSE) Hub ---
+const sseClients = new Set<express.Response>();
+
+function broadcastRealtimeEvent(type: string, payload: any, workspaceId?: string) {
+  const eventRecord = {
+    type,
+    payload,
+    timestamp: new Date().toISOString(),
+    workspaceId: workspaceId || "default"
+  };
+  const message = `event: ${type}\ndata: ${JSON.stringify(eventRecord)}\n\n`;
+  for (const client of sseClients) {
+    try {
+      client.write(message);
+    } catch {
+      sseClients.delete(client);
+    }
+  }
+}
+
+// SSE Connection Endpoint
+app.get("/api/events", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.setHeader("X-Accel-Buffering", "no");
+
+  res.write(`: connected to intenTidy real-time event stream\n\n`);
+  sseClients.add(res);
+
+  req.on("close", () => {
+    sseClients.delete(res);
+  });
+});
+
+// --- AUTH & WORKSPACE API ROUTES ---
+
+app.post("/api/auth/token", (req, res) => {
+  const { userId = "usr-1", email = "engineer@intentidy.io", name = "Platform Engineer", role = "operator", workspaceId = "default" } = req.body;
+
+  if (!["viewer", "operator", "owner"].includes(role)) {
+    res.status(400).json({ error: "Invalid role. Allowed roles: viewer, operator, owner" });
+    return;
+  }
+
+  const token = signJwt({ userId, email, name, role, workspaceId });
+  res.json({
+    token,
+    user: { userId, email, name, role, workspaceId },
+    expiresIn: "24h"
+  });
+});
+
+app.get("/api/auth/me", (req, res) => {
+  const user = (req as any).user;
+  res.json({
+    authenticated: !user.isGuest,
+    user
+  });
+});
+
+app.get("/api/workspaces", (req, res) => {
+  const workspaces = [
+    {
+      id: "default",
+      name: "Global Workspace",
+      description: "Default multi-system orchestration fleet",
+      systemCount: readCards("default").length,
+      createdAt: "2026-01-01T00:00:00Z"
+    }
+  ];
+
+  if (fs.existsSync(WORKSPACES_DIR)) {
+    const dirs = fs.readdirSync(WORKSPACES_DIR);
+    for (const dir of dirs) {
+      const dirPath = path.join(WORKSPACES_DIR, dir);
+      if (fs.statSync(dirPath).isDirectory()) {
+        const cards = readCards(dir);
+        workspaces.push({
+          id: dir,
+          name: dir.charAt(0).toUpperCase() + dir.slice(1).replace(/[-_]/g, " "),
+          description: `Dedicated ${dir} tenant workspace`,
+          systemCount: cards.length,
+          createdAt: "2026-03-01T00:00:00Z"
+        });
+      }
+    }
+  }
+
+  res.json(workspaces);
+});
+
+app.post("/api/workspaces", requireRole("operator"), (req, res) => {
+  const { id, name } = req.body;
+  if (!id) {
+    res.status(400).json({ error: "Workspace ID is required" });
+    return;
+  }
+  const safeId = id.toLowerCase().replace(/[^a-z0-9_-]/g, "");
+  const wsDir = path.join(WORKSPACES_DIR, safeId);
+  if (!fs.existsSync(wsDir)) {
+    fs.mkdirSync(wsDir, { recursive: true });
+    writeCards([], safeId);
+  }
+  res.json({
+    success: true,
+    workspace: {
+      id: safeId,
+      name: name || safeId,
+      description: `Custom ${safeId} workspace`,
+      systemCount: 0,
+      createdAt: new Date().toISOString()
+    }
+  });
+});
+
+// --- CARDS CRUD ENDPOINTS (With RBAC & Workspace Scoping) ---
+
 app.get("/api/cards", (req, res) => {
-  const cards = readCards();
+  const workspaceId = (req as any).workspaceId || (req.query.workspaceId as string) || "default";
+  const cards = readCards(workspaceId);
   res.json(cards);
 });
 
-app.post("/api/cards", (req, res) => {
+app.post("/api/cards", requireRole("operator"), (req, res) => {
   const card = req.body;
   if (!card || !card.id) {
     res.status(400).json({ error: "Invalid card payload" });
     return;
   }
   
-  const cards = readCards();
+  const workspaceId = (req as any).workspaceId || card.workspaceId || "default";
+  card.workspaceId = workspaceId;
+
+  const cards = readCards(workspaceId);
   const index = cards.findIndex((c) => c.id === card.id);
-  if (index !== -1) {
+  const isUpdate = index !== -1;
+
+  if (isUpdate) {
     cards[index] = card;
   } else {
     cards.push(card);
   }
-  writeCards(cards);
+  writeCards(cards, workspaceId);
+
+  broadcastRealtimeEvent(isUpdate ? "card:updated" : "card:created", card, workspaceId);
   res.json({ success: true, card });
 });
 
-app.post("/api/cards/bulk", (req, res) => {
+app.post("/api/cards/bulk", requireRole("operator"), (req, res) => {
   const { cards } = req.body;
   if (!Array.isArray(cards)) {
     res.status(400).json({ error: "Invalid cards array" });
     return;
   }
-  writeCards(cards);
+  const workspaceId = (req as any).workspaceId || "default";
+  writeCards(cards, workspaceId);
+  broadcastRealtimeEvent("card:bulk_updated", { count: cards.length }, workspaceId);
   res.json({ success: true, count: cards.length });
 });
 
-app.delete("/api/cards/:id", (req, res) => {
+app.delete("/api/cards/:id", requireRole("owner"), (req, res) => {
   const { id } = req.params;
-  const cards = readCards();
+  const workspaceId = (req as any).workspaceId || "default";
+  const cards = readCards(workspaceId);
   const filtered = cards.filter((c) => c.id !== id);
-  writeCards(filtered);
+  writeCards(filtered, workspaceId);
+
+  broadcastRealtimeEvent("card:deleted", { id }, workspaceId);
   res.json({ success: true });
 });
+
 
 // Gemini Proxy Endpoints
 app.post("/api/gemini/suggestions", async (req, res) => {
@@ -520,9 +844,10 @@ app.get("/api/git/diffs", async (req, res) => {
   ]);
 });
 
-app.post("/api/git/sync/:id", (req, res) => {
+app.post("/api/git/sync/:id", requireRole("operator"), (req, res) => {
   const { id } = req.params;
-  const cards = readCards();
+  const workspaceId = (req as any).workspaceId || "default";
+  const cards = readCards(workspaceId);
   const index = cards.findIndex(c => c.id === id);
 
   if (index === -1) {
@@ -546,7 +871,8 @@ app.post("/api/git/sync/:id", (req, res) => {
     }
   };
 
-  writeCards(cards);
+  writeCards(cards, workspaceId);
+  broadcastRealtimeEvent("card:synced", cards[index], workspaceId);
   res.json({ success: true, card: cards[index] });
 });
 
@@ -555,13 +881,37 @@ app.post("/api/git/sync/:id", (req, res) => {
 const deploymentHistory: any[] = [];
 
 app.post("/api/webhooks/github", (req, res) => {
+  const webhookSecret = process.env.GITHUB_WEBHOOK_SECRET;
+  const signature = req.headers["x-hub-signature-256"] as string;
+
+  // Cryptographic HMAC Verification (if secret is configured)
+  if (webhookSecret) {
+    if (!signature) {
+      res.status(401).json({ error: "Unauthorized: Missing X-Hub-Signature-256 header" });
+      return;
+    }
+    const computed = "sha256=" + crypto.createHmac("sha256", webhookSecret).update(JSON.stringify(req.body)).digest("hex");
+    try {
+      const sigBuf = Buffer.from(signature);
+      const compBuf = Buffer.from(computed);
+      if (sigBuf.length !== compBuf.length || !crypto.timingSafeEqual(sigBuf, compBuf)) {
+        res.status(401).json({ error: "Unauthorized: Invalid HMAC signature" });
+        return;
+      }
+    } catch {
+      res.status(401).json({ error: "Unauthorized: Invalid signature format" });
+      return;
+    }
+  }
+
   const event = req.headers["x-github-event"] || req.body.event || "push";
   const payload = req.body;
   const repoName = payload.repository?.name || payload.repo;
+  const workspaceId = (req as any).workspaceId || "default";
 
   console.log(`[Webhook] Ingested GitHub event '${event}' for repository '${repoName}'`);
 
-  const cards = readCards();
+  const cards = readCards(workspaceId);
   const targetIndex = cards.findIndex(c => 
     repoName && (c.name.toLowerCase() === repoName.toLowerCase() || c.repoUrl?.toLowerCase().includes(repoName.toLowerCase()))
   );
@@ -592,22 +942,28 @@ app.post("/api/webhooks/github", (req, res) => {
       });
     }
     cards[targetIndex] = card;
-    writeCards(cards);
+    writeCards(cards, workspaceId);
+
+    broadcastRealtimeEvent("card:updated", card, workspaceId);
+    broadcastRealtimeEvent("deployment:webhook", { matchedCard: card.name, status: card.runtime.buildStatus, event }, workspaceId);
     res.json({ received: true, matchedCard: card.name, status: card.runtime.buildStatus });
     return;
   }
 
+  broadcastRealtimeEvent("deployment:webhook", { event, repoName, unmatched: true }, workspaceId);
   res.json({ received: true, note: "Webhook acknowledged; no matching card ID registered." });
 });
 
-app.post("/api/deployments/trigger", (req, res) => {
+app.post("/api/deployments/trigger", requireRole("operator"), (req, res) => {
   const { cardId, environment = "production", triggeredBy = "intenTidy Dashboard" } = req.body;
+  const workspaceId = (req as any).workspaceId || "default";
+
   if (!cardId) {
     res.status(400).json({ error: "cardId is required" });
     return;
   }
 
-  const cards = readCards();
+  const cards = readCards(workspaceId);
   const index = cards.findIndex(c => c.id === cardId);
   if (index === -1) {
     res.status(404).json({ error: "Card not found" });
@@ -643,8 +999,9 @@ app.post("/api/deployments/trigger", (req, res) => {
   if (deploymentHistory.length > 50) deploymentHistory.pop();
 
   cards[index] = card;
-  writeCards(cards);
+  writeCards(cards, workspaceId);
 
+  broadcastRealtimeEvent("deployment:triggered", eventRecord, workspaceId);
   res.json({ success: true, deployment: eventRecord, card });
 });
 
@@ -662,13 +1019,14 @@ app.get("/api/deployments/history", (req, res) => {
 
 app.post("/api/telemetry/ingest", (req, res) => {
   const { cardId, latency, errors, errorRate, cpu, memory, throughput, source = "external-agent" } = req.body;
+  const workspaceId = (req as any).workspaceId || "default";
 
   if (!cardId) {
     res.status(400).json({ error: "cardId is required for telemetry ingestion" });
     return;
   }
 
-  const cards = readCards();
+  const cards = readCards(workspaceId);
   const index = cards.findIndex(c => c.id === cardId || c.name.toLowerCase() === cardId.toLowerCase());
 
   if (index === -1) {
@@ -700,7 +1058,9 @@ app.post("/api/telemetry/ingest", (req, res) => {
   }
 
   cards[index] = card;
-  writeCards(cards);
+  writeCards(cards, workspaceId);
+
+  broadcastRealtimeEvent("telemetry:ingest", { cardId: card.id, cardName: card.name, telemetry: card.runtime.telemetry }, workspaceId);
 
   res.json({
     success: true,
@@ -710,6 +1070,7 @@ app.post("/api/telemetry/ingest", (req, res) => {
     lastSync: card.lastSync
   });
 });
+
 
 app.get("/api/telemetry/stats", (req, res) => {
   const cards = readCards();

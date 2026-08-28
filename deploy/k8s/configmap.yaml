@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: intentidy-config
+  labels:
+    app.kubernetes.io/name: intentidy
+    app.kubernetes.io/part-of: platform-orchestration
+data:
+  NODE_ENV: "production"
+  PORT: "3000"
+  RATE_LIMIT_MAX_REQUESTS: "120"

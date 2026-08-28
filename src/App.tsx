@@ -5,7 +5,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { PortableCard, VoiceIntentResult } from './types';
+import { PortableCard, VoiceIntentResult, UserRole, WorkspaceConfig } from './types';
 import { SAMPLE_CARDS } from './constants';
 import { CardView } from './components/CardView';
 import { summarizeProject, generateSuggestions } from './services/gemini';
@@ -27,7 +27,11 @@ import {
   Filter,
   X,
   Mic,
-  Network
+  Network,
+  Shield,
+  Radio,
+  Layers,
+  AlertCircle
 } from 'lucide-react';
 
 export default function App() {
@@ -42,6 +46,16 @@ export default function App() {
   const [isVoiceModalOpen, setIsVoiceModalOpen] = useState(false);
   const [inventorySummary, setInventorySummary] = useState<string | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
+
+  // Multi-Tenant & RBAC State
+  const [workspaceId, setWorkspaceId] = useState<string>('default');
+  const [workspaces, setWorkspaces] = useState<WorkspaceConfig[]>([]);
+  const [userRole, setUserRole] = useState<UserRole>('operator');
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [isSseConnected, setIsSseConnected] = useState<boolean>(false);
+  const [authWarning, setAuthWarning] = useState<string | null>(null);
+  const [isAddingWorkspace, setIsAddingWorkspace] = useState<boolean>(false);
+  const [newWorkspaceName, setNewWorkspaceName] = useState<string>('');
   
   // Modals state
   const [activeInfoTab, setActiveInfoTab] = useState<'about' | 'guide' | 'faq' | null>(null);
@@ -50,26 +64,105 @@ export default function App() {
   const [sortOption, setSortOption] = useState<'sync' | 'name' | 'status'>('sync');
   const [syncStatus, setSyncStatus] = useState<'synced' | 'syncing' | 'error'>('synced');
 
-  // Load cards from server on mount
+  // Sync JWT token with backend whenever role or workspace changes
   useEffect(() => {
-    async function fetchCards() {
+    async function syncAuthToken() {
       try {
-        const response = await fetch('/api/cards');
-        if (response.ok) {
-          const data = await response.json();
-          setCards(data);
-        } else {
-          setSyncStatus('error');
+        const res = await fetch('/api/auth/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: `usr-${userRole}`,
+            name: `${userRole.toUpperCase()} Operator`,
+            role: userRole,
+            workspaceId
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setAuthToken(data.token);
         }
       } catch (err) {
-        console.error("Error fetching cards from backend:", err);
-        setSyncStatus('error');
-      } finally {
-        setIsLoading(false);
+        console.error("Error acquiring auth token:", err);
       }
     }
-    fetchCards();
-  }, []);
+    syncAuthToken();
+  }, [userRole, workspaceId]);
+
+  // Load available workspaces
+  useEffect(() => {
+    async function loadWorkspaces() {
+      try {
+        const res = await fetch('/api/workspaces');
+        if (res.ok) {
+          const data = await res.json();
+          setWorkspaces(data);
+        }
+      } catch (err) {
+        console.error("Error loading workspaces:", err);
+      }
+    }
+    loadWorkspaces();
+  }, [cards.length]);
+
+  // Fetch cards for selected workspace
+  const fetchCards = async (ws = workspaceId) => {
+    try {
+      setSyncStatus('syncing');
+      const res = await fetch(`/api/cards?workspaceId=${encodeURIComponent(ws)}`, {
+        headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setCards(data);
+        setSyncStatus('synced');
+      } else {
+        setSyncStatus('error');
+      }
+    } catch (err) {
+      console.error("Error fetching cards from backend:", err);
+      setSyncStatus('error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Load cards on initial mount and when workspace changes
+  useEffect(() => {
+    fetchCards(workspaceId);
+  }, [workspaceId, authToken]);
+
+  // Server-Sent Events (SSE) Live Synchronization
+  useEffect(() => {
+    const eventSource = new EventSource('/api/events');
+    setIsSseConnected(true);
+
+    eventSource.onopen = () => setIsSseConnected(true);
+    eventSource.onerror = () => setIsSseConnected(false);
+
+    const handleEvent = (e: MessageEvent) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (!data.workspaceId || data.workspaceId === workspaceId) {
+          fetchCards(workspaceId);
+        }
+      } catch {
+        fetchCards(workspaceId);
+      }
+    };
+
+    eventSource.addEventListener('card:created', handleEvent);
+    eventSource.addEventListener('card:updated', handleEvent);
+    eventSource.addEventListener('card:deleted', handleEvent);
+    eventSource.addEventListener('card:synced', handleEvent);
+    eventSource.addEventListener('card:bulk_updated', handleEvent);
+    eventSource.addEventListener('deployment:triggered', handleEvent);
+    eventSource.addEventListener('telemetry:ingest', handleEvent);
+
+    return () => {
+      eventSource.close();
+    };
+  }, [workspaceId]);
 
   // Near real-time telemetry jitter simulation (throttled to UI-only, no database write storms)
   useEffect(() => {
@@ -98,11 +191,20 @@ export default function App() {
     try {
       const response = await fetch('/api/cards', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedCard)
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          'x-workspace-id': workspaceId
+        },
+        body: JSON.stringify({ ...updatedCard, workspaceId })
       });
       if (response.ok) {
         setSyncStatus('synced');
+        setAuthWarning(null);
+      } else if (response.status === 403) {
+        setAuthWarning(`RBAC Restricted: Role '${userRole}' cannot modify cards. Minimum role required: 'operator'.`);
+        fetchCards(workspaceId);
+        setSyncStatus('error');
       } else {
         setSyncStatus('error');
       }
@@ -118,15 +220,50 @@ export default function App() {
     try {
       const response = await fetch(`/api/cards/${id}`, {
         method: 'DELETE',
+        headers: {
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          'x-workspace-id': workspaceId
+        }
       });
       if (response.ok) {
         setSyncStatus('synced');
+        setAuthWarning(null);
+      } else if (response.status === 403) {
+        setAuthWarning(`RBAC Restricted: Role '${userRole}' cannot delete cards. Minimum role required: 'owner'.`);
+        fetchCards(workspaceId);
+        setSyncStatus('error');
       } else {
         setSyncStatus('error');
       }
     } catch (err) {
       console.error("Error deleting card on server:", err);
       setSyncStatus('error');
+    }
+  };
+
+  const handleCreateWorkspace = async () => {
+    if (!newWorkspaceName.trim()) return;
+    const safeId = newWorkspaceName.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+    try {
+      const res = await fetch('/api/workspaces', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {})
+        },
+        body: JSON.stringify({ id: safeId, name: newWorkspaceName.trim() })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWorkspaces(prev => [...prev, data.workspace]);
+        setWorkspaceId(safeId);
+        setNewWorkspaceName('');
+        setIsAddingWorkspace(false);
+      } else if (res.status === 403) {
+        setAuthWarning(`RBAC Restricted: Role '${userRole}' cannot create workspaces.`);
+      }
+    } catch (err) {
+      console.error("Error creating workspace:", err);
     }
   };
 
@@ -202,12 +339,23 @@ export default function App() {
       setNewCardInput('');
       setIsAddingCard(false);
       setSyncStatus('syncing');
-      await fetch('/api/cards', {
+      const res = await fetch('/api/cards', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newCard)
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          'x-workspace-id': workspaceId
+        },
+        body: JSON.stringify({ ...newCard, workspaceId })
       });
-      setSyncStatus('synced');
+      if (res.ok) {
+        setSyncStatus('synced');
+        setAuthWarning(null);
+      } else if (res.status === 403) {
+        setAuthWarning(`RBAC Restricted: Role '${userRole}' cannot create cards. Minimum role required: 'operator'.`);
+        fetchCards(workspaceId);
+        setSyncStatus('error');
+      }
     } catch (error) {
       console.error("Failed to add card:", error);
     } finally {
@@ -281,7 +429,11 @@ export default function App() {
       // Trigger backend deployment endpoint
       fetch('/api/deployments/trigger', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+          'x-workspace-id': workspaceId
+        },
         body: JSON.stringify({ cardId: mutatedCard.id, environment: 'production' })
       }).catch(console.error);
     }
@@ -298,15 +450,88 @@ export default function App() {
 
       {/* Navigation */}
       <nav className="sticky top-0 z-50 bg-[#FDFDFB]/80 backdrop-blur-xl border-b border-neutral-100 px-6 py-4">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
+        <div className="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-4">
           <div className="flex items-center gap-3">
             <div className="bg-neutral-900 p-1.5 rounded-lg">
               <Command size={20} className="text-white" />
             </div>
-            <h1 className="text-lg font-bold tracking-tight lowercase">intenTidy <span className="text-neutral-400 font-normal italic ml-1">by Decker</span></h1>
+            <div>
+              <h1 className="text-lg font-bold tracking-tight lowercase flex items-center gap-2">
+                intenTidy <span className="text-neutral-400 font-normal italic">by Decker</span>
+              </h1>
+            </div>
           </div>
           
-          <div className="flex items-center gap-3 md:gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+             {/* Workspace Multi-Tenant Selector */}
+             <div className="flex items-center bg-neutral-100/80 px-2.5 py-1 rounded-2xl border border-neutral-200/50 text-xs font-semibold gap-2">
+                <Layers size={13} className="text-neutral-400" />
+                <select
+                  value={workspaceId}
+                  onChange={(e) => setWorkspaceId(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-neutral-800 focus:outline-none cursor-pointer pr-1"
+                >
+                  <option value="default">Global Workspace</option>
+                  {workspaces.filter(w => w.id !== 'default').map(w => (
+                    <option key={w.id} value={w.id}>{w.name}</option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => setIsAddingWorkspace(!isAddingWorkspace)}
+                  className="text-neutral-400 hover:text-neutral-900 text-xs font-bold"
+                  title="Add new workspace"
+                >
+                  +
+                </button>
+             </div>
+
+             {/* RBAC Role Selector */}
+             <div className="flex items-center bg-neutral-100/80 p-1 rounded-2xl border border-neutral-200/50 text-xs font-semibold gap-1">
+                <Shield size={13} className="text-neutral-400 ml-1.5" />
+                <button
+                  onClick={() => setUserRole('viewer')}
+                  className={`px-2 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                    userRole === 'viewer'
+                      ? 'bg-white text-neutral-900 shadow-sm'
+                      : 'text-neutral-500 hover:text-neutral-900'
+                  }`}
+                  title="Viewer (Read-only)"
+                >
+                  Viewer
+                </button>
+                <button
+                  onClick={() => setUserRole('operator')}
+                  className={`px-2 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                    userRole === 'operator'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-neutral-500 hover:text-neutral-900'
+                  }`}
+                  title="Operator (Create, Update, Deploy)"
+                >
+                  Operator
+                </button>
+                <button
+                  onClick={() => setUserRole('owner')}
+                  className={`px-2 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                    userRole === 'owner'
+                      ? 'bg-purple-700 text-white shadow-sm'
+                      : 'text-neutral-500 hover:text-neutral-900'
+                  }`}
+                  title="Owner (Full access including deletion)"
+                >
+                  Owner
+                </button>
+             </div>
+
+             {/* Real-time SSE Live Indicator */}
+             <div 
+               className="hidden sm:flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200/60 text-emerald-800 rounded-full text-[11px] font-mono font-medium shadow-2xs"
+               title={isSseConnected ? "Server-Sent Events active" : "Reconnecting event stream..."}
+             >
+                <span className={`w-2 h-2 rounded-full ${isSseConnected ? "bg-emerald-500 animate-pulse" : "bg-amber-400"}`} />
+                <span>{isSseConnected ? "Live SSE" : "Offline"}</span>
+             </div>
+
              {/* View Mode Switcher */}
              <div className="flex items-center bg-neutral-100/80 p-1 rounded-2xl border border-neutral-200/50 text-xs font-semibold">
                 <button
@@ -370,7 +595,57 @@ export default function App() {
              </button>
           </div>
         </div>
+
+        {/* Inline Workspace Creation Input */}
+        {isAddingWorkspace && (
+          <div className="max-w-7xl mx-auto mt-3 pt-3 border-t border-neutral-100 flex items-center gap-2">
+            <input 
+              type="text"
+              placeholder="New workspace ID (e.g. data-platform)..."
+              value={newWorkspaceName}
+              onChange={(e) => setNewWorkspaceName(e.target.value)}
+              className="text-xs px-3 py-1.5 bg-white border border-neutral-200 rounded-xl focus:outline-none focus:ring-1 focus:ring-neutral-900"
+            />
+            <button
+              onClick={handleCreateWorkspace}
+              className="px-3 py-1.5 bg-neutral-900 text-white rounded-xl text-xs font-bold hover:bg-neutral-800"
+            >
+              Create Workspace
+            </button>
+            <button
+              onClick={() => setIsAddingWorkspace(false)}
+              className="text-xs text-neutral-400 hover:text-neutral-600"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
       </nav>
+
+      {/* RBAC Warning Banner */}
+      <AnimatePresence>
+        {authWarning && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="bg-amber-50 border-b border-amber-200 text-amber-900 px-6 py-2.5 text-xs flex justify-between items-center"
+          >
+            <div className="max-w-7xl mx-auto flex items-center justify-between w-full">
+              <div className="flex items-center gap-2 font-medium">
+                <AlertCircle size={15} className="text-amber-600 shrink-0" />
+                <span>{authWarning}</span>
+              </div>
+              <button 
+                onClick={() => setAuthWarning(null)}
+                className="text-amber-700 hover:text-amber-900 font-bold ml-4"
+              >
+                Dismiss
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Header Section */}
       <header className="max-w-7xl mx-auto px-6 py-12 md:py-16">

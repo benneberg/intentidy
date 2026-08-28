@@ -1,0 +1,9 @@
+apiVersion: v2
+name: intentidy
+description: Helm chart for intenTidy semantic portable software management and orchestration platform
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+maintainers:
+  - name: Platform Engineering
+    email: platform@intentidy.io

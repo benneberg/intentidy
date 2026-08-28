@@ -16,6 +16,13 @@ export interface PortableCard {
   deployUrl?: string;
   workspaceId?: string;
 
+  // RBAC & Permissions
+  rolePermissions?: {
+    requiredRoleToEdit?: UserRole;
+    requiredRoleToDeploy?: UserRole;
+  };
+  allowedRoles?: UserRole[];
+
   // Semantic Layer
   summary: {
     architecture: string;
@@ -137,5 +144,32 @@ export interface DeploymentEvent {
   triggeredBy: string;
   timestamp: string;
   logs: string[];
+}
+
+export type UserRole = 'viewer' | 'operator' | 'owner';
+
+export interface UserSession {
+  userId: string;
+  email: string;
+  name: string;
+  role: UserRole;
+  workspaceId: string;
+  issuedAt?: string;
+  expiresAt?: string;
+}
+
+export interface WorkspaceConfig {
+  id: string;
+  name: string;
+  description: string;
+  systemCount?: number;
+  createdAt: string;
+}
+
+export interface RealtimeEvent {
+  type: 'card:created' | 'card:updated' | 'card:deleted' | 'deployment:triggered' | 'telemetry:ingest' | 'intent:executed';
+  payload: any;
+  timestamp: string;
+  workspaceId?: string;
 }
 
