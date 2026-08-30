@@ -1,41 +1,56 @@
-# TODO — intenTidy Production Roadmap
+# TODO: intenTidy Production Alignment & Roadmap
 
-This roadmap outlines the production capabilities of intenTidy for multi-tenant enterprise and cloud deployments. All phases have been implemented and verified with automated test suites, end-to-end security validations, and production artifacts.
-
----
-
-## 1. Authentication & Multi-Tenant Access Control (RBAC)
-- [x] **[JWT / OAuth Session Layer]**
-  - Implemented cryptographic token-based authentication on `server.ts` (`Authorization: Bearer <token>`) using HS256 HMAC signing and constant-time verification.
-  - Implemented hierarchical role-based permissions (`viewer`, `operator`, `owner`) enforced via `requireRole` middleware across CRUD, deployment triggers, git syncs, and telemetry ingestion.
-  - Added interactive role switcher in the dashboard navigation with dynamic permission enforcement and informative RBAC alerts when restricted actions are attempted.
-- [x] **[Team Workspace Scoping]**
-  - Partitioned file-based storage by organization and workspace ID (`/data/workspaces/<workspaceId>/cards.json`), providing isolated tenant boundaries.
-  - Added multi-tenant workspace management endpoints (`GET /api/workspaces`, `POST /api/workspaces`) and instant UI workspace switching with persistent isolation.
+This document outlines active alignment tasks to extend intenTidy in accordance with the project specifications and architecture roadmap. Completed foundational tasks have been verified and archived into the completion log below.
 
 ---
 
-## 2. Security & Webhook Hardening
-- [x] **[HMAC Webhook Verification]**
-  - Implemented cryptographic signature verification on GitHub incoming webhooks (`X-Hub-Signature-256`) using `crypto.timingSafeEqual` against `GITHUB_WEBHOOK_SECRET`.
-  - Added high-performance sliding-window rate limiting (`RATE_LIMIT_MAX_REQUESTS`) emitting standard `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` HTTP headers, returning HTTP 429 upon quota exhaustion.
+## 🎯 ACTIVE ALIGNMENT TASKS
+
+### 1. External Git Connectivity & Octokit Integration
+- [ ] **[Live Remote GitHub API Integration]**
+  - Integrate `@octokit/rest` into `server.ts` Git proxy endpoints (`/api/git/repo-info`, `/api/git/diffs`).
+  - Read optional `GITHUB_TOKEN` from environment to query live remote GitHub commits, branches, and pull request diffs directly, seamlessly falling back to cached card metadata when unauthenticated.
+  - Expose branch checkout and commit hash validation directly within the card's Diff Review tab.
+
+### 2. Mobile & Voice Continuity
+- [ ] **[Voice-to-Intent Audio Feedback]**
+  - Add Web Audio API synthesized chime confirmation and native `speechSynthesis` voice feedback when voice commands are executed (e.g., "Deployment triggered for PersonaLinea").
+  - Provide an audio toggle preference saved in user profile settings.
+
+### 3. Interactive Topology Orchestration
+- [ ] **[MultiView Interactive Node Drag-and-Drop]**
+  - Upgrade `MultiView.tsx` with mouse and touch drag-and-drop node positioning.
+  - Persist custom topology coordinates `(x, y)` in `PortableCard.topology` within the workspace's persistent store.
+  - Add auto-layout algorithms (force-directed, circular, hierarchical) for multi-node dependency trees.
+
+### 4. Observability & Monitoring Dashboards
+- [ ] **[Grafana Dashboard & Prometheus Alertmanager Templates]**
+  - Create `deploy/monitoring/grafana-dashboard.json` visualizing P95 latency, error spikes, active workspaces, and SSE connections.
+  - Create `deploy/monitoring/prometheus-alerts.yaml` defining automated alerts for system degradation, deployment failures, and rate limit exhaustion.
+
+### 5. Browser Automation & Quality Assurance
+- [ ] **[Playwright Headless E2E Automation]**
+  - Create `tests/e2e/workflow.spec.ts` simulating the complete user journey:
+    1. Workspace creation and switching.
+    2. Role switching and permission boundary verification.
+    3. Card projection and AI architectural analysis.
+    4. Voice modal intent application.
+    5. Real-time SSE event reception.
+
+### 6. Workspace Migration & Backup
+- [ ] **[Workspace Export / Import Archive]**
+  - Add `GET /api/workspaces/:id/export` returning an encrypted or standalone JSON backup of all workspace cards, topology links, and deployment history.
+  - Add `POST /api/workspaces/import` to restore or migrate workspaces across clusters and devices.
 
 ---
 
-## 3. End-to-End Integration & Real-Time Sync
-- [x] **[Automated Integration & Security Unit Tests]**
-  - Added comprehensive automated test suite in `src/__tests__/security-and-e2e.spec.ts` covering JWT signing/verification, tampered token rejection, expired token handling, role hierarchy validation, HMAC webhook authenticity, and multi-tenant partitioning (20/20 test cases passing).
-- [x] **[WebSocket / Server-Sent Events (SSE)]**
-  - Implemented lightweight, bidirectional real-time synchronization via Server-Sent Events (`GET /api/events`).
-  - Broadcasts live events (`card:created`, `card:updated`, `card:deleted`, `card:synced`, `deployment:triggered`, `telemetry:ingest`) to connected clients with instant UI state re-synchronization and a live SSE connection pulse indicator in the navigation header.
+## ✅ COMPLETED SPECIFICATIONS LOG
 
----
-
-## 4. Cloud Infrastructure & DevOps
-- [x] **[Multi-Stage Dockerfile & Container Optimization]**
-  - Created hardened, minimal Alpine Linux `Dockerfile` with multi-stage caching, non-root user execution (`uid 1001`), production asset pruning, and automated `/api/health` container health checks.
-  - Added `.dockerignore` for minimal build contexts.
-- [x] **[Kubernetes / Helm Manifests]**
-  - Added complete Kubernetes manifests in `/deploy/k8s/` (`deployment.yaml`, `service.yaml`, `ingress.yaml`, `configmap.yaml`) with Prometheus scrape annotations, resource limits, and health probes (`/api/health`, `/metrics`).
-  - Added production Helm chart in `/deploy/helm/intentidy/` (`Chart.yaml`, `values.yaml`, and templated deployment and service manifests).
-
+- **JWT Session & RBAC Layer**: HS256 HMAC cryptographic signing, token validation (`/api/auth/token`, `/api/auth/me`), and role hierarchy enforcement (`viewer` < `operator` < `owner`) on backend routes and frontend controls.
+- **Multi-Tenant Workspace Partitioning**: Dynamic workspace isolation (`/data/workspaces/<workspaceId>/cards.json`), workspace CRUD APIs (`/api/workspaces`), and persistent UI workspace switching.
+- **Cryptographic Webhook Hardening**: GitHub `X-Hub-Signature-256` HMAC validation via `crypto.timingSafeEqual` against `GITHUB_WEBHOOK_SECRET`.
+- **Sliding-Window Rate Limiting**: In-memory rate limiting emitting standard `RateLimit-*` headers with HTTP 429 response handling.
+- **Real-Time Push Synchronization**: Server-Sent Events hub (`GET /api/events`) broadcasting live state changes with automatic client hydration and visual SSE status indicator.
+- **Automated Testing**: 20 automated tests in `src/__tests__/` (10 logic tests + 10 security/e2e tests) running with 100% green status under Vitest.
+- **Containerization & Kubernetes Delivery**: Hardened Alpine Linux multi-stage `Dockerfile` (non-root `1001`), Kubernetes deployment manifests (`deploy/k8s/`), and production Helm chart (`deploy/helm/intentidy/`).
+- **Observability Stack**: Prometheus `/metrics` scraping, OpenTelemetry ingestion (`/api/telemetry/ingest`), aggregate stats (`/api/telemetry/stats`), and health check probes (`/api/health`).

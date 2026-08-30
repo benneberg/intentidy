@@ -1,7 +1,7 @@
 # ARCHITECTURE.md: intenTidy
 
 ## HIGH-LEVEL ARCHITECTURE
-intenTidy follows a **Hybrid Full-Stack Architecture** composed of a highly responsive **React Client** and a secure **Express Backend (BFF)**. The Express backend handles secure Gemini API proxying, robust CORS headers, and persistent card state, while the React client renders the primary orchestration dashboard, Sparkline visualizers, and stateful cards.
+intenTidy follows an **Enterprise Hybrid Full-Stack Architecture** composed of a highly responsive **React 19 SPA Client** and a secure, event-driven **Express BFF (Backend-for-Frontend) Gateway**. The Express backend handles secure Gemini AI API proxying, JWT session authentication, Role-Based Access Control (RBAC), multi-tenant workspace partitioning, cryptographic webhook validation, Server-Sent Events (SSE), OpenTelemetry/Prometheus metrics, and durable persistent card state. The React client renders the primary orchestration dashboard, interactive topology maps, and stateful autonomous software entities.
 
 **[Confidence: High]**
 
@@ -9,74 +9,105 @@ intenTidy follows a **Hybrid Full-Stack Architecture** composed of a highly resp
 
 ## COMPONENT BREAKDOWN
 
-- **`server.ts` (The Express Backend & BFF Gateway)**:
-  - Serves as the Backend-for-Frontend (BFF) secure layer.
-  - Implements API endpoints `/api/gemini/*` to proxy AI analysis prompts and natural language intent parsing (`/api/gemini/parse-intent`), completely isolating `GEMINI_API_KEY` from the browser with fallback heuristic engines for high-availability.
-  - Hosts Git proxy endpoints (`/api/git/repo-info`, `/api/git/diffs`, `/api/git/sync/:id`) that interact with GitHub APIs while falling back cleanly to card metadata.
-  - Ingests CI/CD webhooks (`/api/webhooks/github`) and dispatches deployment triggers (`/api/deployments/trigger`, `/api/deployments/:id/status`).
-  - Implements OpenTelemetry/Prometheus observability: exposes live ingestion (`POST /api/telemetry/ingest`), aggregate stats (`GET /api/telemetry/stats`), and standard Prometheus metrics scraping (`GET /metrics`).
-  - Manages durable JSON file-based database persistence (`/data/cards.json`) with unified REST CRUD endpoints (`GET /api/cards`, `POST /api/cards`, `DELETE /api/cards/:id`).
-  - Integrates Vite as middleware for hot-reloaded SPA development, and serves compiled production static assets in staging/production.
-- **`App.tsx` (The Controller)**:
-  - Coordinates global state by hydrating from the `/api/cards` REST endpoints on mount.
-  - Controls view mode switching between the standard **Cards Grid** and the interactive **Topology Map (MultiView)**.
-  - Manages sorting (Alphabetical, Recent Sync, Build Status) and multi-tag filtering mechanisms.
-  - Coordinates the Voice-to-Intent modal and translates parsed agentic commands into immediate state mutations.
-  - Employs non-blocking intelligence modals for cluster summarization and voice operations.
-- **`CardView.tsx` (The Organism)**:
-  - Memoized via `React.memo` for optimal render cycles and zero redundant re-renders.
-  - Renders the interactive layout of an individual "PortableCard."
-  - Contains nested tab navigation between "Overview" and "System Logs."
-  - Mounts the **Quick Actions** semantic toolbar ('Review Diffs', 'Analyze Architecture', 'Generate Scaffold', 'Create Task', 'Trigger Deployment', 'Sync Git').
-  - Captures and displays robust AI analysis errors with dismissible warnings via `aiError` state tracking.
-- **`MultiView.tsx` (Cross-Card Topology Mapping)**:
-  - Visualizes complex cross-system architectures with SVG spline connectors, dependency badges, directional data flow links, and topology metrics.
-  - Supports dynamic link creation between systems (e.g. `consumes-api`, `depends-on`, `data-pipeline`).
-- **`VoiceIntentModal.tsx` & `services/audio.ts` (Agentic Intent Layer)**:
-  - Uses the browser's Web Speech API to capture natural language commands and streams them to `/api/gemini/parse-intent`.
-  - Parses commands into actionable JSON operations (`add_task`, `add_goal`, `set_blocker`, `trigger_deploy`, `create_card`) with instant 1-click execution.
-- **`services/git.ts` (Client Git Service Layer)**:
-  - Provides proxy client calls to `/api/git/*` to fetch live commits, diffs, and repository synchronization.
-- **`services/gemini.ts` (Client Service Layer)**:
-  - Provides simplified helper functions (`summarizeProject`, `generateSuggestions`, `generateArchitectureOverview`).
-  - Proxies calls strictly to `/api/gemini/*` endpoints to protect API key configurations.
+### 1. `server.ts` (The Express BFF Gateway & Service Hub)
+- **BFF Secure AI Proxy**: Implements `/api/gemini/*` endpoints (`/suggestions`, `/summarize`, `/architecture`, `/parse-intent`) to proxy calls to Google Gemini (`@google/genai`), completely isolating `GEMINI_API_KEY` from client bundles, with rule-based fallback heuristic engines ensuring 100% continuous uptime.
+- **Authentication & RBAC Middleware**:
+  - Implements lightweight HS256 HMAC cryptographic token generation (`POST /api/auth/token`) and verification (`GET /api/auth/me`).
+  - Enforces hierarchical permissions (`viewer` < `operator` < `owner`) via `requireRole` middleware across mutating endpoints.
+- **Multi-Tenant Workspace Partitioning**:
+  - Partitions durable JSON storage by workspace ID (`/data/workspaces/<workspaceId>/cards.json`).
+  - Exposes workspace management endpoints (`GET /api/workspaces`, `POST /api/workspaces`).
+- **Ingress Security & Rate Limiting**:
+  - Cryptographically verifies incoming GitHub CI/CD webhooks (`POST /api/webhooks/github`) using `X-Hub-Signature-256` HMAC and constant-time buffer comparison (`crypto.timingSafeEqual`).
+  - Enforces sliding-window rate limiting (`RATE_LIMIT_MAX_REQUESTS`) emitting standard `RateLimit-Limit`, `RateLimit-Remaining`, and `RateLimit-Reset` HTTP headers.
+- **Real-Time Event Hub (Server-Sent Events)**:
+  - Exposes `GET /api/events` to stream state mutations (`card:created`, `card:updated`, `card:deleted`, `card:synced`, `deployment:triggered`, `telemetry:ingest`) in real time to connected browser sessions.
+- **Observability & Health Engine**:
+  - Ingests external OpenTelemetry metrics (`POST /api/telemetry/ingest`).
+  - Aggregates latency, error spikes, and build health stats (`GET /api/telemetry/stats`).
+  - Exposes standard Prometheus metrics scraping (`GET /metrics`).
+  - Provides container liveness and readiness probe endpoint (`GET /api/health`).
+- **Git & Deployment Proxies**:
+  - Exposes Git metadata and diff endpoints (`/api/git/repo-info`, `/api/git/diffs`, `/api/git/sync/:id`).
+  - Exposes deployment dispatch endpoints (`/api/deployments/trigger`, `/api/deployments/:id/status`).
+
+### 2. `App.tsx` (The Client Controller & State Coordinator)
+- **Multi-Tenant Hydration**: Hydrates active card inventory from `/api/cards` scoped by `x-workspace-id` header.
+- **Role-Based Controls**: Interactive UI role selector (`viewer`, `operator`, `owner`) with animated warning alerts on unauthorized actions.
+- **Real-Time SSE Listener**: Connects to `/api/events` with automatic reconnection and a live pulsating visual connection badge.
+- **Dual View Modes**: Seamlessly switches between the responsive **Cards Grid** and the interactive SVG **Topology Map (MultiView)**.
+- **Voice-to-Intent**: Coordinates the speech modal, streaming captured audio to `/api/gemini/parse-intent` and executing actionable state updates with 1-click application.
+- **Decoupled Telemetry**: Visual telemetry jitter runs every 3 seconds purely on the client side, completely decoupled from disk persistence to eliminate write storms.
+
+### 3. `CardView.tsx` (The Autonomous Entity Organism)
+- Memoized with `React.memo` with shallow property comparison to isolate re-render cycles.
+- Renders autonomous system status, health indicators, tags, and goal progress.
+- Dual-tab navigation between "Overview" and "System Logs".
+- Quick Actions semantic toolbar: 'Review Diffs', 'Analyze Architecture', 'Create Task', 'Trigger Deployment', 'Sync Git'.
+
+### 4. `MultiView.tsx` (Cross-Card Topology Mapping)
+- Visualizes cross-system architectures with SVG spline connectors, dependency badges, directional data flow links, and topology metrics.
+- Supports dynamic link creation between systems (e.g. `consumes-api`, `depends-on`, `data-pipeline`).
+
+### 5. `VoiceIntentModal.tsx` & `services/audio.ts` (Agentic Intent Layer)
+- Captures natural language commands via browser Web Speech API.
+- Proxies commands to `/api/gemini/parse-intent` and renders preview actions (`add_task`, `add_goal`, `set_blocker`, `trigger_deploy`, `create_card`) for user confirmation.
 
 ---
 
 ## DATA FLOW
-**[Confidence: High]**
 
-1. **Hydration**: On mount, `App.tsx` fetches the complete list of system cards from `GET /api/cards`. The server automatically seeds the database file `/data/cards.json` with standard `SAMPLE_CARDS` if it is initialized on a clean slate.
-2. **Persistence Mutation**: When cards are added, edited, or deleted, corresponding `POST` or `DELETE` fetch requests are triggered asynchronously. The Express server safely saves state changes to disk.
-3. **Telemetry & Write Storm Protection**: Simulated telemetry jitter updates the `cards` state purely on the client-side every 3 seconds. By decoupling these high-frequency visual jitter updates from database save operations, we protect our server database from excessive write storms.
-4. **AI Processing**: When an architecture re-analysis is requested, the client triggers `generateArchitectureOverview`. This is proxied to the server, processed using the `@google/genai` Node.js SDK, and the computed schema is merged back into client state. If AI services are rate-limited or offline, heuristic fallback engines preserve full interactivity without throwing uncaught client errors.
-5. **Observability Ingestion**: External monitoring agents or CI/CD pipelines push real metrics via `POST /api/telemetry/ingest`. Global metrics are scraped in Prometheus format via `GET /metrics`.
+```
+[External Agents / Webhooks]       [Browser Client (React)]
+            |                                  |
+            | (HMAC Webhooks / Telemetry)      | (REST / SSE / Bearer JWT)
+            v                                  v
++------------------------------------------------------------------------+
+|                      Express BFF Gateway (Port 3000)                   |
+|                                                                        |
+|  [Rate Limiter] -> [Auth / RBAC Middleware] -> [Route Handlers]        |
+|                                                                        |
+|  +-------------------+  +-------------------+  +--------------------+  |
+|  | Multi-Tenant JSON |  | Real-Time SSE Hub |  | AI Heuristic Proxy |  |
+|  | /data/workspaces/ |  |    /api/events    |  |   @google/genai    |  |
+|  +-------------------+  +-------------------+  +--------------------+  |
+|                                                          |             |
++----------------------------------------------------------|-------------+
+                                                           v
+                                                [Google Gemini 2.5 API]
+```
+
+1. **Hydration**: On mount, `App.tsx` queries `GET /api/cards` with `x-workspace-id`. The server initializes and seeds the workspace partition if unpopulated.
+2. **Mutation**: When an operator/owner creates, modifies, or deletes a card, an authenticated request (`POST`/`DELETE`) writes atomically to the tenant partition file on disk and broadcasts an SSE event to all connected clients.
+3. **Real-Time Push**: Connected clients receive SSE messages on `/api/events` and re-synchronize state instantly without polling.
+4. **AI Processing**: Requests to `/api/gemini/*` invoke the `@google/genai` SDK using `process.env.GEMINI_API_KEY`. If rate limits or network issues occur, rule-based heuristic engines seamlessly return structured data.
+5. **Observability**: Prometheus scrapers pull `/metrics`, while external CI/CD tools push data to `/api/telemetry/ingest`.
 
 ---
 
 ## SECURITY MODEL
-**[Confidence: High]**
 
-- **Secret Isolation**: `GEMINI_API_KEY` resides strictly in the environment variables of the server-side container. It is never exposed in client configuration, Vite define blocks, or browser network payloads.
-- **Sanitized Failures**: AI analysis errors or network timeouts are trapped in try/catch blocks on both the client and server. If an AI call fails, the UI gracefully presents an error banner while preserving all other interactive functionalities.
-- **No Blocking Alerts**: Replaced all intrusive modal alerts (`alert()`) with non-blocking reactive dialogs to ensure smooth operation within iframe sandboxes and native viewports.
-
----
-
-## DEPLOYMENT MODEL
-**[Confidence: High]**
-
-- **Runtime**: Node.js environment.
-- **Build System**: Vite compiles static frontend bundles to `dist/`, while `esbuild` bundles `server.ts` into a standalone, single-file CommonJS production server at `dist/server.cjs`.
-- **Target Platform**: Cloud Run (autoscaled, running container-ingress on port 3000).
-- **Start Command**: Standalone execution via `node dist/server.cjs`.
+- **Secret Isolation**: `GEMINI_API_KEY`, `JWT_SECRET`, and `GITHUB_WEBHOOK_SECRET` reside strictly in server environment variables. Zero leakage into browser bundles.
+- **Cryptographic JWT Sessions**: HS256 HMAC tokens with tamper detection, expiration validation, and timing-safe signature checks.
+- **Role-Based Access Control (RBAC)**:
+  - `viewer`: Read-only access to cards, metrics, and workspaces.
+  - `operator`: Can create/update cards, run AI analysis, trigger deployments, and sync repositories.
+  - `owner`: Full administrative access, including card deletion and workspace creation.
+- **Webhook Authenticity**: GitHub CI/CD webhooks are validated using HMAC-SHA256 (`X-Hub-Signature-256`) and `crypto.timingSafeEqual`.
+- **Rate Limiting**: Sliding-window rate limiter protects endpoints against denial-of-service attempts.
+- **Sanitized Failures**: Try/catch boundaries and non-blocking reactive dialogs guarantee smooth execution within sandboxed iframes.
 
 ---
 
-## COMPLETED ARCHITECTURAL RISKS MITIGATION
+## DEPLOYMENT & CONTAINER ARCHITECTURE
 
-1. **Security Vulnerability (Mitigated)**: Removed the direct bundling of `GEMINI_API_KEY` on the client. All AI processing is handled behind our BFF proxy.
-2. **Performance Bottleneck (Mitigated)**: Isolated visual telemetry loops from persistence operations, eliminating DB write storms and memoizing `CardView` with `React.memo`.
-3. **Data Fragility (Mitigated)**: Swapped volatile browser-only `localStorage` for durable, device-agnostic, server-side persistence (`/data/cards.json`).
-4. **Zero-Telemetry Realism (Mitigated)**: Implemented OpenTelemetry-compatible webhook ingestion (`/api/telemetry/ingest`) and Prometheus metrics scraping (`/metrics`).
-5. **Architectural Brittle Failure (Mitigated)**: Built local rule-based heuristic engines for suggestions, summaries, architecture specs, and speech-to-intent to ensure 100% portfolio reliability even during external API quota limits.
+- **Container Image**: Multi-stage hardened `Dockerfile` based on Node 22 Alpine:
+  - Stage 1 (`builder`): Compiles React SPA to `dist/` and bundles `server.ts` into a single standalone CommonJS file (`dist/server.cjs`) via `esbuild`.
+  - Stage 2 (`runner`): Minimal runtime image running as unprivileged user (`uid 1001: intentidy`) with native health checks (`/api/health`).
+- **Kubernetes Manifests** (`deploy/k8s/`):
+  - `deployment.yaml`: Configured with 2 replicas, resource requests/limits, Prometheus annotations, and liveness/readiness probes.
+  - `service.yaml`: ClusterIP service routing port 80 to container port 3000.
+  - `ingress.yaml`: NGINX Ingress controller configuration with SSE timeout buffering.
+  - `configmap.yaml`: Application environment parameters.
+- **Helm Packaging** (`deploy/helm/intentidy/`):
+  - Packaged Helm chart with customizable `values.yaml` supporting autoscaling, ingress, and persistent volume claims.

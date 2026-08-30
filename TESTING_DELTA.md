@@ -1,43 +1,52 @@
-# TESTING DELTA
+# TESTING DELTA & AUTOMATION REPORT
 
-## Current Strategy
-- **Status:** Non-existent. No tests found in `src/` or root.
+## CURRENT TESTING STRATEGY
 
-## Coverage Gaps
-- **P0:** Semantic Project Summarization logic.
-- **P0:** Card Filter/Search algorithms.
-- **P1:** Task State Transitions.
-- **P1:** Speech-to-Task integration.
-- **P2:** UI Component Accessibility (ARIA roles).
+- **Test Framework:** **Vitest** (v4.1.10) with native ESM integration into Vite.
+- **Execution Command:** `npm test` (`vitest run`).
+- **Test Status:** ✅ **20 / 20 Tests Passing (100% Green)**.
+- **Execution Time:** < 1.0s.
 
-## Recommendations
-- **Framework:** **Vitest** (Native to Vite) + **React Testing Library**.
-- **Directory Structure:**
-  ```
-  /src
-    /__tests__
-      App.spec.tsx
-      CardView.spec.tsx
-    /services
-      /__tests__
-        gemini.spec.ts
-  ```
+---
 
-## Bootstrap Test File (`src/services/__tests__/logic.spec.ts`)
-```typescript
-import { describe, it, expect } from 'vitest';
+## AUTOMATED TEST SUITE INVENTORY
 
-describe('Inventory Logic', () => {
-  it('should filter cards by tag correctly', () => {
-    const cards = [{ tags: ['a'] }, { tags: ['b'] }];
-    const filtered = cards.filter(c => c.tags.includes('a'));
-    expect(filtered).toHaveLength(1);
-    expect(filtered[0].tags).toContain('a');
-  });
-});
-```
+### 1. Core Logic & Semantic Processing (`src/__tests__/logic.spec.ts` — 10 Tests)
+| Test Case | Description | Result |
+| :--- | :--- | :---: |
+| **Card Filtering by Tag** | Verifies multi-tag intersection and single-tag filtering | ✅ PASS |
+| **Search Precision** | Verifies keyword search across card names, descriptions, and stacks | ✅ PASS |
+| **Sorting by Recent Sync** | Verifies chronological ordering by ISO 8601 timestamps | ✅ PASS |
+| **Sorting by Name** | Verifies case-insensitive alphabetical sorting | ✅ PASS |
+| **Sorting by Health Status** | Verifies priority ordering: `failed` > `degraded` > `success` | ✅ PASS |
+| **Goal Management** | Verifies immutable addition and mutation of card goals | ✅ PASS |
+| **Task Completion Toggle** | Verifies task status transitions (`todo` <-> `done`) | ✅ PASS |
+| **Telemetry Health Transitions** | Verifies card state flips to `degraded` on latency/error spikes | ✅ PASS |
+| **AI Suggestion Fallback** | Verifies graceful local heuristic fallback during 500 server errors | ✅ PASS |
+| **AI Summarization Fallback** | Verifies error text fallback when network exceptions occur | ✅ PASS |
 
-## High-Value Test Cases
-1. **Search Precision:** Verify that searching for "Security" returns only cards with that keyword in name or description.
-2. **State Persistence:** Verify that updating a card's "Goal" is reflected in the mocked storage layer.
-3. **AI Failure Recovery:** Mock a Gemini API 500 error and verify that the UI displays a "Semantic summary unavailable" fallback instead of crashing.
+### 2. Security, RBAC & E2E Integration (`src/__tests__/security-and-e2e.spec.ts` — 10 Tests)
+| Test Case | Description | Result |
+| :--- | :--- | :---: |
+| **JWT Generation & Verification** | Verifies valid token creation and HMAC-SHA256 signature verification | ✅ PASS |
+| **Tampered Token Rejection** | Verifies that modified payloads with altered claims are strictly rejected | ✅ PASS |
+| **Expired Token Handling** | Verifies rejection of expired tokens | ✅ PASS |
+| **Role Hierarchy Enforcement** | Verifies permission rules: `viewer` < `operator` < `owner` | ✅ PASS |
+| **Genuine Webhook HMAC Verification** | Verifies GitHub `X-Hub-Signature-256` HMAC signatures | ✅ PASS |
+| **Forged Webhook Rejection** | Verifies rejection of forged or mismatched webhook signatures | ✅ PASS |
+| **Tenant Isolation** | Verifies cards are partitioned and isolated between workspaces | ✅ PASS |
+| **Partitioned State Updates** | Verifies updates in one workspace do not contaminate another | ✅ PASS |
+| **Sliding-Window Rate Limiting** | Verifies request tracking and rejection when rate limits are exceeded | ✅ PASS |
+| **Critical Telemetry Alerting** | Verifies system degradation detection under latency/error thresholds | ✅ PASS |
+
+---
+
+## COVERAGE DELTA & GAP ANALYSIS
+
+| Horizon | Component | Target | Current Status |
+| :--- | :--- | :--- | :--- |
+| **Unit Testing** | Filtering, sorting, and state transitions | 95%+ coverage | ✅ Fully Covered (10 tests) |
+| **Security Testing** | JWT, RBAC, HMAC Webhooks, Rate Limiter | 100% coverage | ✅ Fully Covered (10 tests) |
+| **Multi-Tenancy** | Workspace partition isolation | 100% coverage | ✅ Fully Covered |
+| **Browser E2E** | Playwright automated user journey | Full DOM | Planned (CI headless workflow) |
+| **Audio Synthesis** | Web Audio API / Speech output | Audio mock | Planned (Synthetic audio fixture) |

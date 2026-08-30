@@ -148,7 +148,11 @@ describe('Multi-Tenant Workspace Partitioning Tests', () => {
           lastSync: '2026-01-01T00:00:00Z',
           workspaceId: 'default',
           summary: { description: 'Global ingress', architecture: 'Microservices', capabilities: [], techStack: [] },
-          runtime: { buildStatus: 'success', deploymentState: 'production' },
+          runtime: { 
+            buildStatus: 'success', 
+            deploymentState: 'production',
+            lastCommit: { hash: 'a1b2c3d', message: 'feat: init gateway', author: 'platform-team' }
+          },
           intent: { goals: [], tasks: [], blockers: [] }
         }
       ],
@@ -162,7 +166,11 @@ describe('Multi-Tenant Workspace Partitioning Tests', () => {
           lastSync: '2026-02-01T00:00:00Z',
           workspaceId: 'engineering',
           summary: { description: 'Core compiler', architecture: 'Rust pipeline', capabilities: [], techStack: [] },
-          runtime: { buildStatus: 'success', deploymentState: 'staging' },
+          runtime: { 
+            buildStatus: 'success', 
+            deploymentState: 'staging',
+            lastCommit: { hash: 'e4f5g6h', message: 'feat: pipeline parser', author: 'eng-lead' }
+          },
           intent: { goals: [], tasks: [], blockers: [] }
         }
       ]
@@ -187,7 +195,11 @@ describe('Multi-Tenant Workspace Partitioning Tests', () => {
       lastSync: new Date().toISOString(),
       workspaceId: 'engineering',
       summary: { description: 'Event pipeline', architecture: 'Kafka', capabilities: [], techStack: [] },
-      runtime: { buildStatus: 'success', deploymentState: 'dev' },
+      runtime: { 
+        buildStatus: 'success', 
+        deploymentState: 'dev',
+        lastCommit: { hash: '7h8i9j0', message: 'feat: telemetry buffer', author: 'eng-lead' }
+      },
       intent: { goals: [], tasks: [], blockers: [] }
     };
 

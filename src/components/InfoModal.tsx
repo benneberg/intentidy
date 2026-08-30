@@ -4,7 +4,7 @@
  */
 
 import { motion, AnimatePresence } from "motion/react";
-import { X, HelpCircle, BookOpen, Info, ChevronDown } from "lucide-react";
+import { X, HelpCircle, BookOpen, Info, ChevronDown, Shield, Layers, Radio } from "lucide-react";
 import React, { useState } from "react";
 
 interface InfoModalProps {
@@ -16,15 +16,27 @@ interface InfoModalProps {
 const FAQ_ITEMS = [
   {
     q: "What is a PortableCard?",
-    a: "A PortableCard is a semantic projection of your software project. It's not just a link to a repo, but an agentic entity that tracks status, goals, and architecture snapshots."
+    a: "A PortableCard is a semantic snapshot of an autonomous software entity. Instead of forcing you to navigate thousands of raw files, it captures runtime health, goals, blockers, deployment state, and architectural dependencies in a compact cognitive format."
   },
   {
-    q: "How does the 'Autonomous' part work?",
-    a: "We use Gemini-powered agents to monitor your telemetry and code changes. These agents suggest performance fixes, security patches, and test coverage improvements."
+    q: "How does Multi-Tenant Workspace isolation work?",
+    a: "intenTidy partitions data on disk by workspace ID (/data/workspaces/<id>/cards.json). Teams or environments (e.g. 'engineering', 'security-ops', 'production') have their own isolated card sets, which you can switch between instantly in the navigation bar."
   },
   {
-    q: "Can I use this for non-GitHub projects?",
-    a: "Yes. You can manually describe any architectural system, and intenTidy will create a semantic card to manage its intent and lifecycle."
+    q: "What are the RBAC roles and permissions?",
+    a: "We enforce three distinct roles: 'Viewer' (read-only monitoring of cards and telemetry), 'Operator' (create, update cards, trigger deployments, and sync repositories), and 'Owner' (full administrative access including card deletion and workspace creation). Unauthorized operations present informative warning banners."
+  },
+  {
+    q: "How does Real-Time Server-Sent Events (SSE) synchronization work?",
+    a: "The Express BFF maintains a persistent event stream at /api/events. Whenever any user or webhook mutates card state, triggers a deployment, or ingests telemetry, an event is broadcasted and all open browser windows sync immediately without polling."
+  },
+  {
+    q: "How are API keys and secrets protected?",
+    a: "All Gemini AI calls, Git proxies, and token generation run strictly on the server-side Express Backend-for-Frontend (BFF). No secret keys are ever exposed to the client bundle or network payloads. In addition, incoming GitHub webhooks are cryptographically authenticated via HMAC-SHA256."
+  },
+  {
+    q: "What happens if external AI services are unavailable or rate-limited?",
+    a: "intenTidy includes local rule-based heuristic engines for architecture reviews, maintenance suggestions, project summaries, and speech parsing. If external APIs hit rate limits or downtime, the platform gracefully switches to heuristic fallbacks ensuring 100% continuous uptime."
   }
 ];
 
@@ -84,26 +96,37 @@ export function InfoModal({ isOpen, onClose, initialTab = 'about' }: InfoModalPr
                 <section className="space-y-4">
                   <h3 className="text-3xl font-light tracking-tight text-neutral-900">The Semantic Shift</h3>
                   <p className="text-neutral-600 leading-relaxed">
-                    intenTidy solves the <strong>cognitive overload</strong> of multi-device engineering. Instead of managing thousands of raw files, you manage high-level software entities (PortableCards).
+                    intenTidy solves the <strong>cognitive overload</strong> of multi-device engineering. Instead of managing thousands of raw files, you manage high-level software entities (PortableCards) equipped with memory, telemetry, and intent.
                   </p>
                 </section>
                 
-                <div className="grid md:grid-cols-2 gap-8">
-                  <div className="space-y-3">
-                    <h4 className="font-bold text-xs uppercase tracking-widest text-neutral-400">For Who?</h4>
-                    <ul className="text-sm text-neutral-600 space-y-2">
-                      <li>• Solo engineers moving between desktop and mobile.</li>
-                      <li>• Architecture leads managing several microservices.</li>
-                      <li>• AI-native teams utilizing agentic orchestration.</li>
-                    </ul>
+                <div className="grid md:grid-cols-3 gap-6">
+                  <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-widest text-neutral-900">
+                      <Layers size={15} className="text-neutral-500" />
+                      <span>Multi-Tenancy</span>
+                    </div>
+                    <p className="text-xs text-neutral-500 leading-relaxed">
+                      Isolated workspaces partition projects and systems on disk with clean tenant boundaries.
+                    </p>
                   </div>
-                  <div className="space-y-3">
-                    <h4 className="font-bold text-xs uppercase tracking-widest text-neutral-400">When to use?</h4>
-                    <ul className="text-sm text-neutral-600 space-y-2">
-                      <li>• Reviewing diffs during a commute.</li>
-                      <li>• Tracking deployment health in real-time.</li>
-                      <li>• Orchestrating system goals from a phone.</li>
-                    </ul>
+                  <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-widest text-neutral-900">
+                      <Shield size={15} className="text-neutral-500" />
+                      <span>RBAC Security</span>
+                    </div>
+                    <p className="text-xs text-neutral-500 leading-relaxed">
+                      Hierarchical access control (Viewer, Operator, Owner) protects mission-critical mutations.
+                    </p>
+                  </div>
+                  <div className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 space-y-2">
+                    <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-widest text-neutral-900">
+                      <Radio size={15} className="text-neutral-500" />
+                      <span>Real-Time SSE</span>
+                    </div>
+                    <p className="text-xs text-neutral-500 leading-relaxed">
+                      Live event streams broadcast system changes, deployments, and alerts with zero polling delay.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -112,12 +135,13 @@ export function InfoModal({ isOpen, onClose, initialTab = 'about' }: InfoModalPr
             {activeTab === 'guide' && (
               <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <section className="space-y-6">
-                  <h3 className="text-2xl font-light tracking-tight">Getting Started</h3>
+                  <h3 className="text-2xl font-light tracking-tight">Platform Operations Guide</h3>
                   <div className="space-y-4">
-                    <GuideStep number="01" title="Initialize Card" desc="Paste your repo URL or a system description in the 'Add Card' modal." />
-                    <GuideStep number="02" title="Sync Context" desc="Cards automatically pull branch history, telemetry, and deployment states." />
-                    <GuideStep number="03" title="Review Diffs" desc="Tap 'Review Diffs' to see semantic changes instead of raw code line-by-line." />
-                    <GuideStep number="04" title="Orchestrate" desc="Update goals and tasks. Your agents will listen and suggest actions." />
+                    <GuideStep number="01" title="Select or Create Workspace" desc="Use the workspace dropdown in the header to switch between environments or create a dedicated tenant partition." />
+                    <GuideStep number="02" title="Choose Your Role" desc="Switch between Viewer (read-only), Operator (create, edit, deploy), or Owner (administrative control) to test RBAC boundaries." />
+                    <GuideStep number="03" title="Project New System Cards" desc="Click 'Project Card' to paste a GitHub repo URL or natural language architectural description." />
+                    <GuideStep number="04" title="Map Cross-System Topology" desc="Toggle to 'Topology View' to inspect directional dependencies, API consumption links, and data pipelines." />
+                    <GuideStep number="05" title="Agentic Voice-to-Intent" desc="Tap the microphone icon to speak commands like 'Add goal to deploy telemetry worker' or 'Trigger production deployment'." />
                   </div>
                 </section>
               </div>
