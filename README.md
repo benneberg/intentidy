@@ -6,7 +6,7 @@ intenTidy is an enterprise semantic mobile orchestration layer designed to bridg
 
 ---
 
-## 🚀 Overview
+## Overview
 
 Traditional mobile git clients struggle by attempting to compress desktop file trees and terminal logs into small touch screens. **intenTidy** inverts this pattern:
 - **Repository -> Card**: A repository is the implementation; a card is the cognitive, semantic snapshot.
@@ -15,7 +15,7 @@ Traditional mobile git clients struggle by attempting to compress desktop file t
 
 ---
 
-## ✨ Features
+## Features
 
 - **🛡️ Secure AI Architecture Review**: Powered by Google Gemini 2.5 Flash via a secure Backend-for-Frontend (BFF) Express proxy. Generates capability maps, subsystem breakdowns, and architecture overviews without exposing API keys to the browser.
 - **🏢 Multi-Tenant Workspace Partitioning**: Isolate systems across teams or environments (`default`, `engineering`, `security-ops`, or custom). Data is partitioned on disk (`/data/workspaces/<id>/cards.json`) with an interactive switcher and inline creation modal.
