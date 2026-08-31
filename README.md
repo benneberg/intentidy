@@ -2,7 +2,13 @@
 
 **Orchestration Intelligence for Autonomous Software Entities.**
 
-intenTidy is an enterprise semantic mobile orchestration layer designed to bridge the gap between heavy desktop execution environments (IDEs) and cross-device software management. It conceptualizes distributed software systems as "PortableCards"—autonomous, lightweight, AI-enhanced snapshots equipped with memory, telemetry, and intent.
+> An enterprise semantic mobile orchestration layer bridging desktop execution environments and cross-device software management via "PortableCards".
+
+[![CI](https://github.com/benneberg/intentidy/actions/workflows/ci.yml/badge.svg)](https://github.com/benneberg/intentidy/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue.svg)](https://www.typescriptlang.org/)
+[![Bun](https://img.shields.io/badge/Bun-Latest-fbf0d9.svg)](https://bun.sh/)
+[![React](https://img.shields.io/badge/React-19.0-61DAFB.svg)](https://react.dev/)
 
 ---
 
